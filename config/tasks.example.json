@@ -1,0 +1,10 @@
+[
+  {
+    "id": "skills-daily-commit",
+    "name": "Skills 每日自动提交",
+    "schedule": "0 23 * * *",
+    "command": "~/.agents/scripts/skills-daily-commit.sh",
+    "enabled": true,
+    "description": "每天 23:00 自动提交 skills 仓库的变更到 GitHub"
+  }
+]

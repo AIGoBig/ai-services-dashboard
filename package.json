@@ -1,0 +1,16 @@
+{
+  "name": "ai-services-dashboard",
+  "version": "1.0.0",
+  "description": "Unified dashboard for managing AI services, scheduled tasks, and system monitoring on macOS",
+  "scripts": {
+    "server": "node server.js",
+    "app": "cd dashboard-app && npm start",
+    "setup": "bash setup.sh"
+  },
+  "keywords": ["ai", "dashboard", "pm2", "scheduler", "macos"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AIGoBig/ai-services-dashboard"
+  }
+}
