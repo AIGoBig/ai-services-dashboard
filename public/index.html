@@ -389,6 +389,82 @@
   .type-launchagent { background: #a855f720; color: #a855f7; }
   .type-standalone { background: #f59e0b20; color: #f59e0b; }
   .type-pm2 { background: #00a8e820; color: #00a8e8; }
+
+  /* Session status indicators */
+  .session-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .session-working { background: #f9731620; color: #f97316; }
+  .session-thinking { background: #a855f720; color: #a855f7; }
+  .session-idle { background: #6b728020; color: #6b7280; }
+  .session-done { background: #00d4aa20; color: #00d4aa; }
+  .session-error { background: #ff6b6b20; color: #ff6b6b; }
+  .session-pending { background: #f59e0b20; color: #f59e0b; }
+  .session-unknown { background: #37415120; color: #6b7280; }
+
+  .session-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .session-working .session-dot { background: #f97316; animation: pulse-dot 1.5s ease-in-out infinite; }
+  .session-thinking .session-dot { background: #a855f7; animation: pulse-dot 1s ease-in-out infinite; }
+  .session-idle .session-dot { background: #6b7280; }
+  .session-done .session-dot { background: #00d4aa; }
+  .session-error .session-dot { background: #ff6b6b; }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .qa-preview {
+    color: #888;
+    font-size: 11px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qa-preview .qa-label {
+    color: #666;
+    font-weight: 600;
+    margin-right: 2px;
+  }
+  .context-bar {
+    height: 4px;
+    background: #2a2a4a;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .context-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+  .context-low { background: #00d4aa; }
+  .context-mid { background: #ffd700; }
+  .context-high { background: #ff6b6b; }
+  .row-detail {
+    display: none;
+    padding: 12px 14px;
+    background: #0f0f1a;
+    border-bottom: 1px solid #2a2a4a;
+  }
+  .row-detail.show { display: table-row; }
+  .row-detail td { font-size: 12px; line-height: 1.6; }
+  .qa-full { max-height: 120px; overflow-y: auto; }
+  .qa-full .qa-block { margin-bottom: 8px; }
+  .qa-full .qa-block-label { color: #888; font-weight: 600; font-size: 11px; margin-bottom: 2px; }
+  .qa-full .qa-block-text { color: #ccc; font-family: inherit; white-space: pre-wrap; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -829,7 +905,24 @@ function renderAiCli(data) {
 
   let html = '';
 
-  // Summary cards
+  // Status summary row
+  const statusCounts = { working: 0, thinking: 0, idle: 0, done: 0, error: 0, unknown: 0 };
+  for (const p of processes) {
+    const st = (p.session && p.session.status) || 'unknown';
+    statusCounts[st] = (statusCounts[st] || 0) + 1;
+  }
+  const statusLabels = { working: '工作中', thinking: '思考中', idle: '空闲', done: '已完成', error: '错误', unknown: '未知' };
+  const statusIcons = { working: '🟠', thinking: '🟣', idle: '⚪', done: '🟢', error: '🔴', unknown: '⚫' };
+
+  html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">';
+  for (const [st, count] of Object.entries(statusCounts)) {
+    if (count > 0) {
+      html += `<span class="session-status session-${st}"><span class="session-dot"></span>${statusLabels[st]} ${count}</span>`;
+    }
+  }
+  html += '</div>';
+
+  // Summary cards per tool
   const toolNames = Object.keys(summary);
   if (toolNames.length > 0) {
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">';
@@ -853,41 +946,95 @@ function renderAiCli(data) {
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
           <tr style="background:#12121f;border-bottom:1px solid #2a2a4a">
-            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">工具</th>
-            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">版本</th>
-            <th style="padding:10px 14px;text-align:right;color:#888;font-weight:500">PID</th>
-            <th style="padding:10px 14px;text-align:right;color:#888;font-weight:500">CPU%</th>
-            <th style="padding:10px 14px;text-align:right;color:#888;font-weight:500">MEM%</th>
-            <th style="padding:10px 14px;text-align:right;color:#888;font-weight:500">MEM</th>
-            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">运行时间</th>
-            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">项目</th>
+            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500;width:30px"></th>
+            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">工具</th>
+            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">状态</th>
+            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">当前任务</th>
+            <th style="padding:8px 10px;text-align:right;color:#888;font-weight:500">PID</th>
+            <th style="padding:8px 10px;text-align:right;color:#888;font-weight:500">CPU</th>
+            <th style="padding:8px 10px;text-align:right;color:#888;font-weight:500">MEM</th>
+            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">Context</th>
+            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">运行时间</th>
+            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">项目</th>
           </tr>
         </thead>
         <tbody>
   `;
 
-  // Sort: active processes first (by CPU desc)
-  const sorted = [...processes].sort((a, b) => b.cpuPercent - a.cpuPercent);
+  // Sort: working/thinking first, then by CPU desc
+  const statusOrder = { working: 0, thinking: 1, pending: 2, idle: 3, done: 4, error: 5, unknown: 6 };
+  const sorted = [...processes].sort((a, b) => {
+    const sa = statusOrder[(a.session && a.session.status) || 'unknown'] ?? 9;
+    const sb = statusOrder[(b.session && b.session.status) || 'unknown'] ?? 9;
+    if (sa !== sb) return sa - sb;
+    return b.cpuPercent - a.cpuPercent;
+  });
+
   for (const p of sorted) {
+    const s = p.session || {};
+    const status = s.status || 'unknown';
     const cpuColor = p.cpuPercent > 50 ? '#ff6b6b' : (p.cpuPercent > 10 ? '#ffd700' : '#e0e0e0');
     const memColor = p.memPercent > 10 ? '#ff6b6b' : (p.memPercent > 3 ? '#ffd700' : '#e0e0e0');
     const toolBadge = `<span class="svc-type-badge ${p.tool === 'QoderCLI' ? 'type-pm2' : (p.tool === 'Claude Code' ? 'type-launchagent' : 'type-standalone')}">${escapeHtml(p.tool)}</span>`;
+    const statusBadge = `<span class="session-status session-${status}"><span class="session-dot"></span>${statusLabels[status] || status}</span>`;
+
+    // Current task: question + current tool
+    let taskHtml = '-';
+    if (s.question) {
+      taskHtml = `<span class="qa-preview"><span class="qa-label">Q:</span>${escapeHtml(s.question.substring(0, 50))}</span>`;
+    }
+    if (s.currentTool) {
+      taskHtml += `<span style="color:#f97316;font-size:10px;margin-left:6px">🔧${escapeHtml(s.currentTool)}</span>`;
+    }
+
+    // Context bar
+    const ctx = s.contextPercent || 0;
+    const ctxClass = ctx < 50 ? 'context-low' : (ctx < 80 ? 'context-mid' : 'context-high');
+    const ctxHtml = ctx > 0
+      ? `<div style="font-size:10px;color:#888">${ctx}%</div><div class="context-bar"><div class="context-bar-fill ${ctxClass}" style="width:${Math.min(ctx, 100)}%"></div></div>`
+      : '<span style="color:#444;font-size:11px">-</span>';
+
+    // Expandable row ID
+    const rowId = `aicli-detail-${p.pid}`;
 
     html += `
-      <tr style="border-bottom:1px solid #1f1f35" title="${escapeHtml(p.cwd || p.cmdline)}">
-        <td style="padding:8px 14px">${toolBadge}</td>
-        <td style="padding:8px 14px;color:#888;font-family:'SF Mono',Monaco,monospace">${p.version ? 'v' + escapeHtml(p.version) : '-'}</td>
-        <td style="padding:8px 14px;text-align:right;font-family:'SF Mono',Monaco,monospace">${p.pid}</td>
-        <td style="padding:8px 14px;text-align:right;color:${cpuColor};font-weight:600">${p.cpuPercent}%</td>
-        <td style="padding:8px 14px;text-align:right;color:${memColor}">${p.memPercent}%</td>
-        <td style="padding:8px 14px;text-align:right">${p.memMB} MB</td>
-        <td style="padding:8px 14px;color:#888">${escapeHtml(p.elapsedHuman)}</td>
-        <td style="padding:8px 14px;color:#00a8e8;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.project || '-')}</td>
+      <tr style="border-bottom:1px solid #1f1f35;cursor:pointer" onclick="toggleAiCliRow('${rowId}')" title="${escapeHtml(p.cwd || p.cmdline)}">
+        <td style="padding:8px 6px;text-align:center;color:#555;font-size:10px">▸</td>
+        <td style="padding:8px 10px">${toolBadge}${p.version ? `<span style="color:#666;font-size:10px;margin-left:4px">v${escapeHtml(p.version)}</span>` : ''}</td>
+        <td style="padding:8px 10px">${statusBadge}</td>
+        <td style="padding:8px 10px">${taskHtml}</td>
+        <td style="padding:8px 10px;text-align:right;font-family:'SF Mono',Monaco,monospace;font-size:12px">${p.pid}</td>
+        <td style="padding:8px 10px;text-align:right;color:${cpuColor};font-weight:600">${p.cpuPercent}%</td>
+        <td style="padding:8px 10px;text-align:right;color:${memColor}">${p.memMB}MB</td>
+        <td style="padding:8px 10px;min-width:70px">${ctxHtml}</td>
+        <td style="padding:8px 10px;color:#888;font-size:12px">${escapeHtml(p.elapsedHuman)}</td>
+        <td style="padding:8px 10px;color:#00a8e8;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.project || '-')}</td>
+      </tr>
+      <tr class="row-detail" id="${rowId}">
+        <td colspan="10" style="padding:0">
+          <div style="padding:14px 18px;background:#0f0f1a">
+            <div class="qa-full">
+              ${s.question ? `<div class="qa-block"><div class="qa-block-label">问题</div><div class="qa-block-text">${escapeHtml(s.question)}</div></div>` : ''}
+              ${s.answer ? `<div class="qa-block"><div class="qa-block-label">回答</div><div class="qa-block-text">${escapeHtml(s.answer)}</div></div>` : ''}
+            </div>
+            <div style="display:flex;gap:20px;margin-top:8px;font-size:11px;color:#666">
+              ${s.messageCount ? `<span>消息: ${s.messageCount}</span>` : ''}
+              ${s.currentTool ? `<span>工具: <b style="color:#f97316">${escapeHtml(s.currentTool)}</b></span>` : ''}
+              ${s.workspacePath ? `<span>工作区: ${escapeHtml(s.workspacePath)}</span>` : ''}
+              <span>CWD: <span style="color:#00a8e8">${escapeHtml(p.cwd || '-')}</span></span>
+            </div>
+          </div>
+        </td>
       </tr>`;
   }
 
   html += '</tbody></table></div>';
   container.innerHTML = html;
+}
+
+function toggleAiCliRow(rowId) {
+  const row = document.getElementById(rowId);
+  if (row) row.classList.toggle('show');
 }
 
 // Init
