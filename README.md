@@ -4,7 +4,17 @@
 
 A single pane of glass for all your local AI services — pm2-managed daemons, cron tasks, health checks, and logs — wrapped in a native macOS desktop app.
 
-![Dashboard Preview](dashboard-app/icon.png)
+## Screenshots
+
+<!-- Replace the placeholder images below with actual screenshots -->
+
+| Dashboard Overview | Scheduled Tasks |
+|:---:|:---:|
+| ![Dashboard Overview](docs/screenshots/dashboard-overview.png) | ![Scheduled Tasks](docs/screenshots/scheduled-tasks.png) |
+
+| Service Dashboard | Service Details |
+|:---:|:---:|
+| ![Service Dashboard](docs/screenshots/service-details.png) | ![Desktop App](docs/screenshots/desktop-app.png) |
 
 ## Features
 
