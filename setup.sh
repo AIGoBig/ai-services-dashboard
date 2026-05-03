@@ -93,6 +93,7 @@ echo -e "${YELLOW}[3/7] 创建目录结构...${NC}"
 mkdir -p "$SERVICES_DIR/logs"
 mkdir -p "$SCRIPTS_DIR"
 mkdir -p "$SCHEDULER_DIR/public"
+mkdir -p "$SCHEDULER_DIR/scripts"
 mkdir -p "$DASHBOARD_APP_DIR"
 # Create per-service dirs for pid files
 mkdir -p "$SERVICES_DIR/scheduler" "$SERVICES_DIR/cc-connect" "$SERVICES_DIR/openclaw-gateway" "$SERVICES_DIR/gemini" "$SERVICES_DIR/xiaohongshu-mcp" 2>/dev/null || true
@@ -108,6 +109,11 @@ cp "$SCRIPT_DIR/config/service-ports.json" "$SCHEDULER_DIR/service-ports.json"
 # Deploy external-services.json (non-pm2 service definitions)
 if [ -f "$SCRIPT_DIR/config/external-services.json" ]; then
   cp "$SCRIPT_DIR/config/external-services.json" "$SCHEDULER_DIR/external-services.json"
+fi
+# Deploy AI CLI monitor script
+if [ -f "$SCRIPT_DIR/scripts/ai-cli-monitor.py" ]; then
+  cp "$SCRIPT_DIR/scripts/ai-cli-monitor.py" "$SCHEDULER_DIR/scripts/ai-cli-monitor.py"
+  chmod +x "$SCHEDULER_DIR/scripts/ai-cli-monitor.py"
 fi
 if [ ! -f "$SCHEDULER_DIR/tasks.json" ]; then
   cp "$SCRIPT_DIR/config/tasks.example.json" "$SCHEDULER_DIR/tasks.json"

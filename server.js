@@ -321,6 +321,34 @@ app.post('/api/external-services/:id/toggle', async (req, res) => {
   });
 });
 
+// === AI CLI Process Monitor ===
+const MONITOR_SCRIPT = path.join(__dirname, 'scripts/ai-cli-monitor.py');
+
+app.get('/api/ai-cli-processes', (req, res) => {
+  if (!fs.existsSync(MONITOR_SCRIPT)) {
+    return res.json({ processes: [], error: 'Monitor script not found' });
+  }
+  exec(`python3 "${MONITOR_SCRIPT}" --json`, { timeout: 15000, env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout, stderr) => {
+    if (err) {
+      return res.json({ processes: [], error: stderr || err.message });
+    }
+    try {
+      const processes = JSON.parse(stdout);
+      // Summary stats
+      const byTool = {};
+      for (const p of processes) {
+        if (!byTool[p.tool]) byTool[p.tool] = { count: 0, totalCpu: 0, totalMemMB: 0 };
+        byTool[p.tool].count++;
+        byTool[p.tool].totalCpu += p.cpuPercent;
+        byTool[p.tool].totalMemMB += p.memMB;
+      }
+      res.json({ processes, summary: byTool, count: processes.length });
+    } catch (e) {
+      res.json({ processes: [], error: 'Parse error: ' + e.message });
+    }
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`AI Services Dashboard running at http://localhost:${PORT}`);
 });
