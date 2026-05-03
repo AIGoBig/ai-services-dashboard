@@ -367,6 +367,28 @@
   .badge-failed { background: #ff6b6b20; color: #ff6b6b; }
   .badge-running { background: #ffd70020; color: #ffd700; }
   .badge-scheduled { background: #88888820; color: #888; }
+
+  .section-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 24px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #2a2a4a;
+  }
+  .svc-type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  .type-launchagent { background: #a855f720; color: #a855f7; }
+  .type-standalone { background: #f59e0b20; color: #f59e0b; }
+  .type-pm2 { background: #00a8e820; color: #00a8e8; }
 </style>
 </head>
 <body>
@@ -467,90 +489,134 @@ function renderTasks(tasks) {
 
 // ========== Services ==========
 async function loadServices() {
-  const [svcRes, healthRes] = await Promise.all([
+  const [svcRes, healthRes, extRes] = await Promise.all([
     fetch('/api/services'),
-    fetch('/api/health').catch(() => ({ json: () => ({}) }))
+    fetch('/api/health').catch(() => ({ json: () => ({}) })),
+    fetch('/api/external-services').catch(() => ({ json: () => [] }))
   ]);
   const svcData = await svcRes.json();
   healthData = await healthRes.json();
-  renderServices(svcData.services || []);
+  const extServices = await extRes.json();
+  renderServices(svcData.services || [], extServices);
   document.getElementById('lastRefreshServices').textContent =
     '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
 }
 
-function renderServices(services) {
-  const container = document.getElementById('services');
-  if (services.length === 0) {
-    container.innerHTML = '<div style="color:#666;text-align:center;padding:60px;">无服务数据</div>';
-    return;
+function renderPm2ServiceCard(s) {
+  const health = healthData[s.name];
+  const healthHtml = health
+    ? `<span class="health-indicator"><span class="health-dot ${health.healthy ? 'ok' : 'fail'}"></span>${health.healthy ? '端口正常' : '端口不通'} :${health.port}</span>`
+    : '';
+
+  const statusClass = s.status === 'online' ? 'svc-online' : (s.status === 'stopped' ? 'svc-offline' : 'svc-restarting');
+  const memMB = s.memory ? (s.memory / 1024 / 1024).toFixed(1) : 0;
+  const memPercent = Math.min((memMB / 500) * 100, 100);
+  const memBarClass = memPercent < 30 ? 'low' : (memPercent < 70 ? 'mid' : 'high');
+  const isOnline = s.status === 'online';
+
+  return `
+    <div class="service-card" id="svc-card-${s.name}">
+      <div class="service-card-header">
+        <div class="service-name">
+          ${s.name}
+          <span class="svc-type-badge type-pm2">PM2</span>
+          <span class="svc-status-badge ${statusClass}">
+            <span class="status-dot ${isOnline ? 'active' : 'inactive'}"></span>
+            ${s.status}
+          </span>
+          ${healthHtml}
+        </div>
+      </div>
+      <div class="service-metrics">
+        <div class="metric-box"><div class="metric-value">${s.pid || '-'}</div><div class="metric-label">PID</div></div>
+        <div class="metric-box"><div class="metric-value">${formatUptime(s.uptime ? Date.now() - s.uptime : 0)}</div><div class="metric-label">运行时间</div></div>
+        <div class="metric-box"><div class="metric-value">${s.cpu || 0}%</div><div class="metric-label">CPU</div></div>
+        <div class="metric-box"><div class="metric-value">${memMB} MB</div><div class="metric-label">内存</div><div class="mem-bar-container"><div class="mem-bar-fill ${memBarClass}" style="width:${memPercent}%"></div></div></div>
+      </div>
+      <div class="service-actions">
+        ${isOnline
+          ? `<button class="btn-primary" onclick="svcAction('${s.name}', 'restart')">重启</button><button class="btn-secondary" onclick="svcAction('${s.name}', 'stop')">停止</button>`
+          : `<button class="btn-primary" onclick="svcAction('${s.name}', 'start')">启动</button>`}
+        <button class="btn-ghost" onclick="toggleSvcLogs('${s.name}')">日志</button>
+        <button class="btn-ghost" onclick="toggleSvcDetail('${s.name}')">详情</button>
+        <button class="btn-danger" onclick="svcAction('${s.name}', 'delete')">移除</button>
+      </div>
+      <div class="log-panel" id="svc-logs-${s.name}"></div>
+      <div class="detail-panel" id="svc-detail-${s.name}"></div>
+    </div>`;
+}
+
+function renderExtServiceCard(svc) {
+  const typeBadge = svc.type === 'launchagent' ? '<span class="svc-type-badge type-launchagent">LaunchAgent</span>' : '<span class="svc-type-badge type-standalone">独立进程</span>';
+  const statusClass = svc.running ? 'svc-online' : 'svc-offline';
+  const healthHtml = svc.port
+    ? `<span class="health-indicator"><span class="health-dot ${svc.healthy ? 'ok' : 'fail'}"></span>${svc.healthy ? '端口正常' : '端口不通'} :${svc.port}</span>`
+    : '';
+  const memMB = svc.memory ? (svc.memory / 1024 / 1024).toFixed(1) : 0;
+  const memPercent = Math.min((memMB / 500) * 100, 100);
+  const memBarClass = memPercent < 30 ? 'low' : (memPercent < 70 ? 'mid' : 'high');
+
+  // Extra ports display
+  let extraPortsHtml = '';
+  if (svc.extraPortStatus) {
+    extraPortsHtml = Object.entries(svc.extraPortStatus).map(([p, ok]) =>
+      `<span class="health-indicator"><span class="health-dot ${ok ? 'ok' : 'fail'}"></span>:${p}</span>`
+    ).join('');
   }
 
-  container.innerHTML = services.map(s => {
-    const health = healthData[s.name];
-    const healthHtml = health
-      ? `<span class="health-indicator"><span class="health-dot ${health.healthy ? 'ok' : 'fail'}"></span>${health.healthy ? '端口正常' : '端口不通'} :${health.port}</span>`
-      : '';
+  // Actions: LaunchAgent can be load/unload
+  let actionsHtml = '';
+  if (svc.type === 'launchagent') {
+    actionsHtml = svc.running
+      ? `<button class="btn-secondary" onclick="extSvcAction('${svc.id}', 'unload')">停止</button>`
+      : `<button class="btn-primary" onclick="extSvcAction('${svc.id}', 'load')">启动</button>`;
+  }
 
-    const statusClass = s.status === 'online' ? 'svc-online' : (s.status === 'stopped' ? 'svc-offline' : 'svc-restarting');
-    const memMB = s.memory ? (s.memory / 1024 / 1024).toFixed(1) : 0;
-    const memPercent = Math.min((memMB / 500) * 100, 100); // assume 500MB max for visualization
-    const memBarClass = memPercent < 30 ? 'low' : (memPercent < 70 ? 'mid' : 'high');
-
-    const isOnline = s.status === 'online';
-
-    return `
-      <div class="service-card" id="svc-card-${s.name}">
-        <div class="service-card-header">
-          <div class="service-name">
-            ${s.name}
-            <span class="svc-status-badge ${statusClass}">
-              <span class="status-dot ${isOnline ? 'active' : 'inactive'}"></span>
-              ${s.status}
-            </span>
-            ${healthHtml}
-          </div>
+  return `
+    <div class="service-card">
+      <div class="service-card-header">
+        <div class="service-name">
+          ${escapeHtml(svc.name || svc.id)}
+          ${typeBadge}
+          <span class="svc-status-badge ${statusClass}">
+            <span class="status-dot ${svc.running ? 'active' : 'inactive'}"></span>
+            ${svc.running ? '运行中' : '已停止'}
+          </span>
+          ${healthHtml}${extraPortsHtml}
         </div>
-
-        <div class="service-metrics">
-          <div class="metric-box">
-            <div class="metric-value">${s.pid || '-'}</div>
-            <div class="metric-label">PID</div>
-          </div>
-          <div class="metric-box">
-            <div class="metric-value">${formatUptime(s.uptime ? Date.now() - s.uptime : 0)}</div>
-            <div class="metric-label">运行时间</div>
-          </div>
-          <div class="metric-box">
-            <div class="metric-value">${s.cpu || 0}%</div>
-            <div class="metric-label">CPU</div>
-          </div>
-          <div class="metric-box">
-            <div class="metric-value">${memMB} MB</div>
-            <div class="metric-label">内存</div>
-            <div class="mem-bar-container">
-              <div class="mem-bar-fill ${memBarClass}" style="width:${memPercent}%"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="service-actions">
-          ${isOnline
-            ? `<button class="btn-primary" onclick="svcAction('${s.name}', 'restart')">重启</button>
-               <button class="btn-secondary" onclick="svcAction('${s.name}', 'stop')">停止</button>`
-            : `<button class="btn-primary" onclick="svcAction('${s.name}', 'start')">启动</button>`
-          }
-          <button class="btn-ghost" onclick="toggleSvcLogs('${s.name}')">日志</button>
-          <button class="btn-ghost" onclick="toggleSvcDetail('${s.name}')">详情</button>
-          <button class="btn-danger" onclick="svcAction('${s.name}', 'delete')">移除</button>
-        </div>
-
-        <div class="log-panel" id="svc-logs-${s.name}"></div>
-        <div class="detail-panel" id="svc-detail-${s.name}"></div>
       </div>
-    `;
-  }).join('');
+      ${svc.description ? `<div style="color:#888;font-size:13px;margin-bottom:12px">${escapeHtml(svc.description)}</div>` : ''}
+      <div class="service-metrics">
+        <div class="metric-box"><div class="metric-value">${svc.pid || '-'}</div><div class="metric-label">PID</div></div>
+        <div class="metric-box"><div class="metric-value">${svc.cpu.toFixed(1)}%</div><div class="metric-label">CPU</div></div>
+        <div class="metric-box"><div class="metric-value">${memMB} MB</div><div class="metric-label">内存</div><div class="mem-bar-container"><div class="mem-bar-fill ${memBarClass}" style="width:${memPercent}%"></div></div></div>
+        <div class="metric-box"><div class="metric-value">${svc.port || '-'}</div><div class="metric-label">端口</div></div>
+      </div>
+      ${actionsHtml ? `<div class="service-actions">${actionsHtml}</div>` : ''}
+    </div>`;
+}
 
-  // Restore open panels
+function renderServices(services, extServices) {
+  const container = document.getElementById('services');
+  let html = '';
+
+  // PM2 services section
+  html += '<div class="section-label">PM2 托管服务</div>';
+  if (services.length === 0) {
+    html += '<div style="color:#666;text-align:center;padding:40px;">无 PM2 服务</div>';
+  } else {
+    html += services.map(s => renderPm2ServiceCard(s)).join('');
+  }
+
+  // External services section
+  if (extServices && extServices.length > 0) {
+    html += '<div class="section-label">外部服务</div>';
+    html += extServices.map(s => renderExtServiceCard(s)).join('');
+  }
+
+  container.innerHTML = html;
+
+  // Restore open panels for PM2 services
   for (const name of Object.keys(openLogs)) {
     if (openLogs[name]) loadSvcLogs(name, openLogs[name]);
   }
@@ -563,6 +629,16 @@ async function svcAction(name, action) {
   if (action === 'delete' && !confirm(`确定从 pm2 移除 "${name}" 吗？`)) return;
   await fetch(`/api/services/${name}/${action}`, { method: 'POST' });
   setTimeout(loadServices, 800);
+}
+
+async function extSvcAction(id, action) {
+  if (action === 'unload' && !confirm(`确定停止此服务吗？`)) return;
+  await fetch(`/api/external-services/${id}/toggle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action })
+  });
+  setTimeout(loadServices, 1500);
 }
 
 async function toggleSvcLogs(name) {

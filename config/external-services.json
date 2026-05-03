@@ -1,0 +1,19 @@
+[
+  {
+    "id": "openclaw-gateway",
+    "name": "OpenClaw Gateway",
+    "type": "launchagent",
+    "launchagentLabel": "ai.openclaw.gateway",
+    "port": 18789,
+    "description": "OpenClaw 多 Agent 网关"
+  },
+  {
+    "id": "tly-v2ray",
+    "name": "龙甲 (TLY)",
+    "type": "launchagent",
+    "launchagentLabel": "yanue.xxxxxxtly.v2ray-core",
+    "port": 1080,
+    "extraPorts": [10871],
+    "description": "龙甲 VPN 代理 (v2ray)"
+  }
+]

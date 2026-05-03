@@ -30,6 +30,12 @@ const SERVICE_PORTS = fs.existsSync(PORTS_FILE)
   ? { ...DEFAULT_PORTS, ...JSON.parse(fs.readFileSync(PORTS_FILE, 'utf8')) }
   : DEFAULT_PORTS;
 
+// External services: non-pm2 services (LaunchAgent, standalone, etc.)
+const EXT_SERVICES_FILE = path.join(__dirname, 'external-services.json');
+const externalServiceDefs = fs.existsSync(EXT_SERVICES_FILE)
+  ? JSON.parse(fs.readFileSync(EXT_SERVICES_FILE, 'utf8'))
+  : [];
+
 if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
 
 const defaultTasks = [
@@ -230,6 +236,89 @@ app.get('/api/health', async (req, res) => {
     results[name] = { port, healthy: await checkPort('localhost', port) };
   }
   res.json(results);
+});
+
+// === External Services APIs (non-pm2: LaunchAgent, standalone) ===
+function getLaunchAgentStatus(label) {
+  return new Promise((resolve) => {
+    exec(`launchctl list ${label} 2>/dev/null`, { env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout) => {
+      if (err) return resolve({ running: false, pid: null, exitStatus: null });
+      const pidMatch = stdout.match(/"PID"\s*=\s*(\d+)/);
+      const statusMatch = stdout.match(/"LastExitStatus"\s*=\s*(\d+)/);
+      resolve({
+        running: !!pidMatch,
+        pid: pidMatch ? parseInt(pidMatch[1]) : null,
+        exitStatus: statusMatch ? parseInt(statusMatch[1]) : null
+      });
+    });
+  });
+}
+
+function getProcessInfo(pid) {
+  return new Promise((resolve) => {
+    if (!pid) return resolve({ command: '', memory: 0, cpu: 0 });
+    exec(`ps -p ${pid} -o rss=,pcpu=,command= 2>/dev/null`, (err, stdout) => {
+      if (err || !stdout.trim()) return resolve({ command: '', memory: 0, cpu: 0 });
+      const parts = stdout.trim().split(/\s+/);
+      const rss = parseInt(parts[0]) || 0;
+      const cpu = parseFloat(parts[1]) || 0;
+      const command = parts.slice(2).join(' ');
+      resolve({ command, memory: rss * 1024, cpu });
+    });
+  });
+}
+
+app.get('/api/external-services', async (req, res) => {
+  const results = [];
+  for (const svc of externalServiceDefs) {
+    const info = { ...svc, healthy: false, running: false, pid: null, memory: 0, cpu: 0, command: '' };
+
+    // Check port health
+    if (svc.port) {
+      info.healthy = await checkPort('localhost', svc.port);
+    }
+
+    // Check LaunchAgent status
+    if (svc.type === 'launchagent' && svc.launchagentLabel) {
+      const laStatus = await getLaunchAgentStatus(svc.launchagentLabel);
+      info.running = laStatus.running;
+      info.pid = laStatus.pid;
+      if (laStatus.pid) {
+        const procInfo = await getProcessInfo(laStatus.pid);
+        info.memory = procInfo.memory;
+        info.cpu = procInfo.cpu;
+        info.command = procInfo.command;
+      }
+    }
+
+    // Check extra ports
+    if (svc.extraPorts && svc.extraPorts.length > 0) {
+      info.extraPortStatus = {};
+      for (const ep of svc.extraPorts) {
+        info.extraPortStatus[ep] = await checkPort('localhost', ep);
+      }
+    }
+
+    results.push(info);
+  }
+  res.json(results);
+});
+
+app.post('/api/external-services/:id/toggle', async (req, res) => {
+  const svc = externalServiceDefs.find(s => s.id === req.params.id);
+  if (!svc) return res.status(404).json({ error: 'External service not found' });
+  if (svc.type !== 'launchagent' || !svc.launchagentLabel) {
+    return res.status(400).json({ error: 'Only LaunchAgent services can be toggled' });
+  }
+  const action = req.body.action; // 'load' or 'unload'
+  if (!['load', 'unload'].includes(action)) {
+    return res.status(400).json({ error: 'Action must be "load" or "unload"' });
+  }
+  const plistPath = path.join(HOME, `Library/LaunchAgents/${svc.launchagentLabel}.plist`);
+  exec(`launchctl ${action} ${plistPath} 2>&1`, { env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: `${action}ed ${svc.name}`, id: svc.id });
+  });
 });
 
 app.listen(PORT, () => {

@@ -105,6 +105,10 @@ cp "$SCRIPT_DIR/server.js" "$SCHEDULER_DIR/server.js"
 cp -r "$SCRIPT_DIR/public/" "$SCHEDULER_DIR/public/"
 # Deploy service-ports.json (port mapping config)
 cp "$SCRIPT_DIR/config/service-ports.json" "$SCHEDULER_DIR/service-ports.json"
+# Deploy external-services.json (non-pm2 service definitions)
+if [ -f "$SCRIPT_DIR/config/external-services.json" ]; then
+  cp "$SCRIPT_DIR/config/external-services.json" "$SCHEDULER_DIR/external-services.json"
+fi
 if [ ! -f "$SCHEDULER_DIR/tasks.json" ]; then
   cp "$SCRIPT_DIR/config/tasks.example.json" "$SCHEDULER_DIR/tasks.json"
 fi
