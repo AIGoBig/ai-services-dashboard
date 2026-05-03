@@ -108,6 +108,13 @@ cp "$SCRIPT_DIR/config/service-ports.json" "$SCHEDULER_DIR/service-ports.json"
 if [ ! -f "$SCHEDULER_DIR/tasks.json" ]; then
   cp "$SCRIPT_DIR/config/tasks.example.json" "$SCHEDULER_DIR/tasks.json"
 fi
+# Install npm dependencies in scheduler dir (express, node-schedule)
+if [ ! -d "$SCHEDULER_DIR/node_modules" ]; then
+  cd "$SCHEDULER_DIR"
+  npm init -y >/dev/null 2>&1
+  npm install express node-schedule --silent 2>/dev/null
+  cd "$SCRIPT_DIR"
+fi
 echo -e "  ✓ scheduler/"
 
 # 5. Copy service scripts
