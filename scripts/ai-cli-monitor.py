@@ -167,6 +167,7 @@ def collect_qoder_sessions():
 
 def collect_claude_sessions():
     """Scan ~/.claude/projects/ for Claude Code session state.
+    Only scans the 3 most recently modified projects for performance.
     Returns dict: cwd_path -> session_info
     """
     sessions = {}
@@ -175,24 +176,34 @@ def collect_claude_sessions():
         return sessions
 
     try:
-        for proj_dir in os.listdir(projects_dir):
-            proj_path = os.path.join(projects_dir, proj_dir)
-            if not os.path.isdir(proj_path):
-                continue
+        # Get project dirs sorted by modification time (most recent first)
+        proj_dirs = []
+        for d in os.listdir(projects_dir):
+            dp = os.path.join(projects_dir, d)
+            if os.path.isdir(dp):
+                try:
+                    proj_dirs.append((d, dp, os.path.getmtime(dp)))
+                except OSError:
+                    continue
+        proj_dirs.sort(key=lambda x: x[2], reverse=True)
 
+        # Only scan top 3 most recently modified projects
+        for proj_dir_name, proj_path, _ in proj_dirs[:3]:
             # Decode project path from directory name
-            # Format: -Users-king-... → /Users/king/...
-            decoded_path = '/' + proj_dir.lstrip('-').replace('-', '/')
+            decoded_path = '/' + proj_dir_name.lstrip('-').replace('-', '/')
 
             # Find the most recently modified .jsonl session file
             jsonl_files = []
-            for f in os.listdir(proj_path):
-                if f.endswith('.jsonl'):
-                    fpath = os.path.join(proj_path, f)
-                    try:
-                        jsonl_files.append((fpath, os.path.getmtime(fpath)))
-                    except OSError:
-                        continue
+            try:
+                for f in os.listdir(proj_path):
+                    if f.endswith('.jsonl'):
+                        fpath = os.path.join(proj_path, f)
+                        try:
+                            jsonl_files.append((fpath, os.path.getmtime(fpath)))
+                        except OSError:
+                            continue
+            except OSError:
+                continue
 
             if not jsonl_files:
                 continue
@@ -389,7 +400,7 @@ def scan_with_psutil():
 
 
 def scan_with_ps():
-    """Fallback: scan processes using ps command (limited info)."""
+    """Fallback: scan processes using ps command. Uses batch lsof for cwd."""
     try:
         output = subprocess.check_output(
             ['ps', 'eo', 'pid,pcpu,pmem,rss,etime,args'],
@@ -399,7 +410,8 @@ def scan_with_ps():
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return []
 
-    results = []
+    # First pass: collect AI CLI processes
+    ai_procs = []
     for line in output.splitlines()[1:]:
         line = line.strip()
         if not line:
@@ -413,54 +425,70 @@ def scan_with_ps():
             if pattern.search(command):
                 if 'ai-cli-monitor' in command:
                     continue
-
                 version = ver_fn(command)
                 try:
                     pid = int(pid_str)
                 except ValueError:
                     continue
-
-                mem_mb = 0.0
-                try:
-                    mem_mb = round(int(rss_str) / 1024, 1)
-                except ValueError:
-                    pass
-
-                elapsed = 0
-                elapsed_human = etime_str if etime_str else '-'
-                try:
-                    elapsed = parse_etime(etime_str)
-                except Exception:
-                    pass
-
-                cwd = ''
-                try:
-                    cwd_out = subprocess.check_output(
-                        ['lsof', '-p', str(pid), '-Fn'],
-                        text=True, timeout=2, stderr=subprocess.DEVNULL
-                    )
-                    for l in cwd_out.splitlines():
-                        if l.startswith('n/') and not cwd:
-                            cwd = l[1:]
-                except Exception:
-                    pass
-
-                results.append({
-                    'tool': tool_name,
-                    'pid': pid,
-                    'version': version,
-                    'cpuPercent': round(float(cpu_str), 1),
-                    'memPercent': round(float(mem_str), 1),
-                    'memMB': mem_mb,
-                    'elapsed': elapsed,
-                    'elapsedHuman': elapsed_human,
-                    'project': get_project_from_cwd(cwd),
-                    'cwd': cwd,
-                    'cmdline': command[:200],
-                    'threads': 0,
-                    'session': {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': ''},
-                })
+                ai_procs.append((pid, cpu_str, mem_str, rss_str, etime_str, command, tool_name, version))
                 break
+
+    if not ai_procs:
+        return []
+
+    # Batch lsof for all AI CLI PIDs at once (much faster than per-process)
+    pid_cwd_map = {}
+    pids_str = ','.join(str(p[0]) for p in ai_procs)
+    try:
+        lsof_out = subprocess.check_output(
+            ['lsof', '-p', pids_str, '-Fn'],
+            text=True, timeout=3, stderr=subprocess.DEVNULL
+        )
+        current_pid = None
+        for line in lsof_out.splitlines():
+            if line.startswith('p'):
+                try:
+                    current_pid = int(line[1:])
+                except ValueError:
+                    current_pid = None
+            elif line.startswith('n/') and current_pid and current_pid not in pid_cwd_map:
+                pid_cwd_map[current_pid] = line[1:]
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
+        pass
+
+    # Second pass: build results
+    results = []
+    for pid, cpu_str, mem_str, rss_str, etime_str, command, tool_name, version in ai_procs:
+        mem_mb = 0.0
+        try:
+            mem_mb = round(int(rss_str) / 1024, 1)
+        except ValueError:
+            pass
+
+        elapsed = 0
+        elapsed_human = etime_str if etime_str else '-'
+        try:
+            elapsed = parse_etime(etime_str)
+        except Exception:
+            pass
+
+        cwd = pid_cwd_map.get(pid, '')
+
+        results.append({
+            'tool': tool_name,
+            'pid': pid,
+            'version': version,
+            'cpuPercent': round(float(cpu_str), 1),
+            'memPercent': round(float(mem_str), 1),
+            'memMB': mem_mb,
+            'elapsed': elapsed,
+            'elapsedHuman': elapsed_human,
+            'project': get_project_from_cwd(cwd),
+            'cwd': cwd,
+            'cmdline': command[:200],
+            'threads': 0,
+            'session': {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': ''},
+        })
 
     return results
 

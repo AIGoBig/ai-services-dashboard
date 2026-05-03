@@ -328,7 +328,7 @@ app.get('/api/ai-cli-processes', (req, res) => {
   if (!fs.existsSync(MONITOR_SCRIPT)) {
     return res.json({ processes: [], error: 'Monitor script not found' });
   }
-  exec(`python3 "${MONITOR_SCRIPT}" --json`, { timeout: 15000, env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout, stderr) => {
+  exec(`python3 "${MONITOR_SCRIPT}" --json`, { timeout: 10000, env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout, stderr) => {
     if (err) {
       return res.json({ processes: [], error: stderr || err.message });
     }
