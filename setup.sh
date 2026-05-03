@@ -1,12 +1,14 @@
 #!/bin/bash
 # ============================================================
 # AI Services Dashboard - Setup Script
+# Supports macOS Intel & Apple Silicon
 # ============================================================
 set -e
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 HOME_DIR="$HOME"
@@ -16,20 +18,47 @@ SCRIPTS_DIR="$AGENTS_DIR/scripts"
 SCHEDULER_DIR="$AGENTS_DIR/scheduler"
 DASHBOARD_APP_DIR="$AGENTS_DIR/dashboard-app"
 
+# Detect architecture and Homebrew prefix
+ARCH=$(uname -m)
+if [ "$ARCH" = "arm64" ]; then
+  BREW_PREFIX="/opt/homebrew"
+else
+  BREW_PREFIX="/usr/local"
+fi
+
+# Build PATH for the setup script itself
+export PATH="$BREW_PREFIX/bin:$BREW_PREFIX/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
 echo -e "${BLUE}╔══════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     AI Services Dashboard - Setup               ║${NC}"
 echo -e "${BLUE}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
+echo -e "  Architecture: ${CYAN}$ARCH${NC}"
+echo -e "  Brew prefix:  ${CYAN}$BREW_PREFIX${NC}"
+echo ""
 
-# 1. Check prerequisites
-echo -e "${YELLOW}[1/7] 检查依赖...${NC}"
-for cmd in node npm git; do
-  if ! command -v $cmd &>/dev/null; then
-    echo -e "  ❌ $cmd 未安装"
+# 1. Check / Install Node.js
+echo -e "${YELLOW}[1/7] 检查 Node.js...${NC}"
+if ! command -v node &>/dev/null; then
+  echo -e "  ${YELLOW}Node.js 未安装，尝试自动安装...${NC}"
+  if command -v brew &>/dev/null; then
+    brew install node
+  elif command -v curl &>/dev/null; then
+    # Install via nvm (works without Homebrew)
+    export NVM_DIR="$HOME/.nvm"
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm install --lts
+    # Update PATH for current session
+    export PATH="$(dirname $(which node)):$PATH"
+  else
+    echo -e "  ${RED}无法自动安装 Node.js，请手动安装后重试${NC}"
     exit 1
   fi
-  echo -e "  ✓ $cmd $(command -v $cmd)"
-done
+fi
+NODE_VER=$(node -v 2>/dev/null || echo "unknown")
+NPM_VER=$(npm -v 2>/dev/null || echo "unknown")
+echo -e "  ✓ Node.js $NODE_VER (npm $NPM_VER)"
 
 # 2. Install pm2
 echo -e "${YELLOW}[2/7] 安装 pm2...${NC}"
@@ -46,6 +75,8 @@ mkdir -p "$SERVICES_DIR/logs"
 mkdir -p "$SCRIPTS_DIR"
 mkdir -p "$SCHEDULER_DIR/public"
 mkdir -p "$DASHBOARD_APP_DIR"
+# Create per-service dirs for pid files
+mkdir -p "$SERVICES_DIR/scheduler" "$SERVICES_DIR/cc-connect" "$SERVICES_DIR/openclaw-gateway" "$SERVICES_DIR/gemini" "$SERVICES_DIR/xiaohongshu-mcp" 2>/dev/null || true
 echo -e "  ✓ $AGENTS_DIR/"
 
 # 4. Copy server files
@@ -53,6 +84,8 @@ echo -e "${YELLOW}[4/7] 部署后端服务...${NC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cp "$SCRIPT_DIR/server.js" "$SCHEDULER_DIR/server.js"
 cp -r "$SCRIPT_DIR/public/" "$SCHEDULER_DIR/public/"
+# Deploy service-ports.json (port mapping config)
+cp "$SCRIPT_DIR/config/service-ports.json" "$SCHEDULER_DIR/service-ports.json"
 if [ ! -f "$SCHEDULER_DIR/tasks.json" ]; then
   cp "$SCRIPT_DIR/config/tasks.example.json" "$SCHEDULER_DIR/tasks.json"
 fi

@@ -5,9 +5,19 @@ const path = require('path');
 const os = require('os');
 
 const HOME = os.homedir();
+const fs = require('fs');
 const DASHBOARD_URL = 'http://localhost:3777';
 const PM2_PATH = process.env.PM2_PATH || 'pm2';
 const ECOSYSTEM_PATH = path.join(HOME, '.agents/services/ecosystem.config.js');
+
+// Auto-detect PATH: Homebrew ARM vs Intel + system paths
+function buildPath() {
+  const brewPrefix = fs.existsSync('/opt/homebrew/bin/brew') ? '/opt/homebrew'
+    : fs.existsSync('/usr/local/bin/brew') ? '/usr/local' : null;
+  const paths = [brewPrefix ? `${brewPrefix}/bin` : '', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  return paths.filter(Boolean).join(':');
+}
+const SYSTEM_PATH = buildPath();
 
 let mainWindow = null;
 
@@ -25,7 +35,7 @@ function checkDashboardReady(retries = 30) {
 
 function ensureServicesRunning() {
   return new Promise((resolve) => {
-    const env = { ...process.env, PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin' };
+    const env = { ...process.env, PATH: SYSTEM_PATH };
     exec(`${PM2_PATH} resurrect`, { env }, () => {
       exec(`${PM2_PATH} jlist`, { env }, (err, stdout) => {
         let running = 0;
@@ -51,7 +61,7 @@ function ensureServicesRunning() {
 async function createWindow() {
   await ensureServicesRunning();
   try { await checkDashboardReady(30); } catch (e) {
-    exec(`${PM2_PATH} restart scheduler`, { env: { ...process.env, PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin' } });
+    exec(`${PM2_PATH} restart scheduler`, { env: { ...process.env, PATH: SYSTEM_PATH } });
     try { await checkDashboardReady(15); } catch (e2) {}
   }
 

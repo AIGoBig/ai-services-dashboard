@@ -13,14 +13,21 @@ const TASKS_FILE = path.join(__dirname, 'tasks.json');
 const LOGS_DIR = path.join(__dirname, 'logs');
 const SERVICES_DIR = path.join(HOME, '.agents/services/logs');
 
-// Service port mapping for health checks (configurable)
-const SERVICE_PORTS = {
-  scheduler: 3777,
-  gemini: 52019,
-  'xiaohongshu-mcp': 18060,
-  'openclaw-gateway': 18789,
-  'agent-browser': 54247
-};
+// Auto-detect PATH: Homebrew ARM vs Intel + system paths
+function buildPath() {
+  const brewPrefix = fs.existsSync('/opt/homebrew/bin/brew') ? '/opt/homebrew'
+    : fs.existsSync('/usr/local/bin/brew') ? '/usr/local' : null;
+  const paths = [brewPrefix ? `${brewPrefix}/bin` : '', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  return paths.filter(Boolean).join(':');
+}
+const SYSTEM_PATH = buildPath();
+
+// Service port mapping: load from config file, fallback to defaults
+const DEFAULT_PORTS = { scheduler: 3777, gemini: 52019, 'xiaohongshu-mcp': 18060, 'openclaw-gateway': 18789, 'agent-browser': 54247 };
+const PORTS_FILE = path.join(__dirname, 'service-ports.json');
+const SERVICE_PORTS = fs.existsSync(PORTS_FILE)
+  ? { ...DEFAULT_PORTS, ...JSON.parse(fs.readFileSync(PORTS_FILE, 'utf8')) }
+  : DEFAULT_PORTS;
 
 if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
 
@@ -67,7 +74,7 @@ function runTask(taskId, manual = false) {
   if (executionHistory[taskId].length > 50) executionHistory[taskId].pop();
   const logStream = fs.createWriteStream(logPath, { flags: 'a' });
   logStream.write(`\n=== ${prefix} ${timestamp} ===\n`);
-  const child = exec(task.command, { env: { ...process.env, PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin' } });
+  const child = exec(task.command, { env: { ...process.env, PATH: SYSTEM_PATH } });
   let output = '';
   child.stdout.on('data', (data) => { output += data; logStream.write(data); });
   child.stderr.on('data', (data) => { output += data; logStream.write(data); });
@@ -103,7 +110,7 @@ function checkPort(host, port, timeout = 3000) {
 function pm2Exec(cmd) {
   const pm2Path = process.env.PM2_PATH || 'pm2';
   return new Promise((resolve, reject) => {
-    exec(`${pm2Path} ${cmd}`, { env: { ...process.env, PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin' } }, (err, stdout) => {
+    exec(`${pm2Path} ${cmd}`, { env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout) => {
       if (err) reject(err);
       else resolve(stdout);
     });
@@ -155,7 +162,7 @@ app.get('/api/tasks/:id/history', (req, res) => {
 // === Service APIs ===
 app.get('/api/services', (req, res) => {
   const pm2Path = process.env.PM2_PATH || 'pm2';
-  exec(`${pm2Path} jlist`, { env: { ...process.env, PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin' } }, (err, stdout) => {
+  exec(`${pm2Path} jlist`, { env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout) => {
     if (err) return res.json({ error: 'pm2 not available', services: [] });
     try {
       const list = JSON.parse(stdout);
