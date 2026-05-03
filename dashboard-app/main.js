@@ -10,12 +10,25 @@ const DASHBOARD_URL = 'http://localhost:3777';
 const PM2_PATH = process.env.PM2_PATH || 'pm2';
 const ECOSYSTEM_PATH = path.join(HOME, '.agents/services/ecosystem.config.js');
 
-// Auto-detect PATH: Homebrew ARM vs Intel + system paths
+// Auto-detect PATH: Homebrew ARM vs Intel + system paths + Homebrew Python
 function buildPath() {
   const brewPrefix = fs.existsSync('/opt/homebrew/bin/brew') ? '/opt/homebrew'
     : fs.existsSync('/usr/local/bin/brew') ? '/usr/local' : null;
   const npmGlobal = path.join(HOME, '.npm-global/bin');
-  const paths = [npmGlobal, brewPrefix ? `${brewPrefix}/bin` : '', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  const paths = [npmGlobal];
+  if (brewPrefix) {
+    paths.push(`${brewPrefix}/bin`);
+    try {
+      const optDir = `${brewPrefix}/opt`;
+      for (const e of fs.readdirSync(optDir)) {
+        if (e.startsWith('python@')) {
+          const libexecBin = `${optDir}/${e}/libexec/bin`;
+          if (fs.existsSync(libexecBin)) paths.push(libexecBin);
+        }
+      }
+    } catch (_) {}
+  }
+  paths.push('/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin');
   return paths.filter(Boolean).join(':');
 }
 const SYSTEM_PATH = buildPath();

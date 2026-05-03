@@ -13,12 +13,26 @@ const TASKS_FILE = path.join(__dirname, 'tasks.json');
 const LOGS_DIR = path.join(__dirname, 'logs');
 const SERVICES_DIR = path.join(HOME, '.agents/services/logs');
 
-// Auto-detect PATH: Homebrew ARM vs Intel + system paths
+// Auto-detect PATH: Homebrew ARM vs Intel + system paths + Homebrew Python
 function buildPath() {
   const brewPrefix = fs.existsSync('/opt/homebrew/bin/brew') ? '/opt/homebrew'
     : fs.existsSync('/usr/local/bin/brew') ? '/usr/local' : null;
   const npmGlobal = path.join(HOME, '.npm-global/bin');
-  const paths = [npmGlobal, brewPrefix ? `${brewPrefix}/bin` : '', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  const paths = [npmGlobal];
+  if (brewPrefix) {
+    paths.push(`${brewPrefix}/bin`);
+    // Find Homebrew Python versioned libexec paths (has psutil)
+    try {
+      const optDir = `${brewPrefix}/opt`;
+      for (const e of fs.readdirSync(optDir)) {
+        if (e.startsWith('python@')) {
+          const libexecBin = `${optDir}/${e}/libexec/bin`;
+          if (fs.existsSync(libexecBin)) paths.push(libexecBin);
+        }
+      }
+    } catch (_) {}
+  }
+  paths.push('/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin');
   return paths.filter(Boolean).join(':');
 }
 const SYSTEM_PATH = buildPath();

@@ -561,6 +561,10 @@ function renderTasks(tasks) {
           <div class="meta-label">描述</div>
           <div class="meta-value">${t.description}</div>
         </div>
+        <div class="meta-item">
+          <div class="meta-label">执行次数</div>
+          <div class="meta-value">${t.historyCount || 0}</div>
+        </div>
       </div>
       <div class="task-actions">
         <button class="btn-primary" onclick="runTask('${t.id}')">立即执行</button>
@@ -619,6 +623,8 @@ function renderPm2ServiceCard(s) {
         <div class="metric-box"><div class="metric-value">${formatUptime(s.uptime ? Date.now() - s.uptime : 0)}</div><div class="metric-label">运行时间</div></div>
         <div class="metric-box"><div class="metric-value">${s.cpu || 0}%</div><div class="metric-label">CPU</div></div>
         <div class="metric-box"><div class="metric-value">${memMB} MB</div><div class="metric-label">内存</div><div class="mem-bar-container"><div class="mem-bar-fill ${memBarClass}" style="width:${memPercent}%"></div></div></div>
+        <div class="metric-box"><div class="metric-value">${s.restarts || 0}</div><div class="metric-label">重启</div></div>
+        <div class="metric-box"><div class="metric-value">${s.pmId != null ? '#' + s.pmId : '-'}</div><div class="metric-label">PM2 ID</div></div>
       </div>
       <div class="service-actions">
         ${isOnline
@@ -673,6 +679,8 @@ function renderExtServiceCard(svc) {
         </div>
       </div>
       ${svc.description ? `<div style="color:#888;font-size:13px;margin-bottom:12px">${escapeHtml(svc.description)}</div>` : ''}
+      ${svc.command ? `<div style="color:#555;font-size:11px;margin-bottom:12px;font-family:'SF Mono',Monaco,monospace;word-break:break-all">${escapeHtml(svc.command)}</div>` : ''}
+      ${svc.launchagentLabel ? `<div style="color:#555;font-size:11px;margin-bottom:10px">LaunchAgent: <span style="color:#a855f7">${escapeHtml(svc.launchagentLabel)}</span></div>` : ''}
       <div class="service-metrics">
         <div class="metric-box"><div class="metric-value">${svc.pid || '-'}</div><div class="metric-label">PID</div></div>
         <div class="metric-box"><div class="metric-value">${svc.cpu.toFixed(1)}%</div><div class="metric-label">CPU</div></div>
@@ -879,6 +887,14 @@ async function toggleHistory(id) {
   panel.classList.add('show');
 }
 
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '-';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+  return (bytes / 1073741824).toFixed(2) + ' GB';
+}
+
 // ========== AI CLI Processes ==========
 async function loadAiCli() {
   const res = await fetch('/api/ai-cli-processes');
@@ -1013,16 +1029,53 @@ function renderAiCli(data) {
       <tr class="row-detail" id="${rowId}">
         <td colspan="10" style="padding:0">
           <div style="padding:14px 18px;background:#0f0f1a">
-            <div class="qa-full">
-              ${s.question ? `<div class="qa-block"><div class="qa-block-label">问题</div><div class="qa-block-text">${escapeHtml(s.question)}</div></div>` : ''}
-              ${s.answer ? `<div class="qa-block"><div class="qa-block-label">回答</div><div class="qa-block-text">${escapeHtml(s.answer)}</div></div>` : ''}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+              <!-- System Info -->
+              <div>
+                <div style="color:#888;font-size:10px;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">系统信息</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px">
+                  <div><span style="color:#555">PID:</span> <span style="color:#e0e0e0;font-family:'SF Mono',Monaco,monospace">${p.pid}</span></div>
+                  ${p.parentPid ? `<div><span style="color:#555">父进程:</span> <span style="color:#e0e0e0;font-family:'SF Mono',Monaco,monospace">${p.parentPid}${p.parentName ? ' (' + escapeHtml(p.parentName) + ')' : ''}</span></div>` : ''}
+                  ${p.processStatus ? `<div><span style="color:#555">进程状态:</span> <span style="color:#e0e0e0">${escapeHtml(p.processStatus)}</span></div>` : ''}
+                  ${p.startTime ? `<div><span style="color:#555">启动时间:</span> <span style="color:#e0e0e0">${escapeHtml(p.startTime)}</span></div>` : ''}
+                  ${p.threads ? `<div><span style="color:#555">线程:</span> <span style="color:#e0e0e0">${p.threads}</span></div>` : ''}
+                  ${p.numFds ? `<div><span style="color:#555">文件描述符:</span> <span style="color:#e0e0e0">${p.numFds}</span></div>` : ''}
+                  ${p.numConnections ? `<div><span style="color:#555">网络连接:</span> <span style="color:#e0e0e0">${p.numConnections}</span></div>` : ''}
+                  ${p.vmemMB ? `<div><span style="color:#555">虚拟内存:</span> <span style="color:#e0e0e0">${p.vmemMB > 1024 ? (p.vmemMB / 1024).toFixed(1) + ' GB' : p.vmemMB.toFixed(0) + ' MB'}</span></div>` : ''}
+                  ${p.ioReadBytes || p.ioWriteBytes ? `<div><span style="color:#555">I/O:</span> <span style="color:#e0e0e0">R ${formatBytes(p.ioReadBytes)} / W ${formatBytes(p.ioWriteBytes)}</span></div>` : ''}
+                  <div><span style="color:#555">CWD:</span> <span style="color:#00a8e8;font-family:'SF Mono',Monaco,monospace;font-size:11px;word-break:break-all">${escapeHtml(p.cwd || '-')}</span></div>
+                </div>
+              </div>
+              <!-- Session Info -->
+              <div>
+                <div style="color:#888;font-size:10px;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">会话信息</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px">
+                  <div><span style="color:#555">状态:</span> ${statusBadge}</div>
+                  ${s.currentTool ? `<div><span style="color:#555">当前工具:</span> <span style="color:#f97316;font-weight:600">${escapeHtml(s.currentTool)}</span></div>` : ''}
+                  ${s.messageCount ? `<div><span style="color:#555">消息数:</span> <span style="color:#e0e0e0">${s.messageCount}</span></div>` : ''}
+                  ${ctx > 0 ? `<div><span style="color:#555">Context:</span> <span style="color:#e0e0e0">${ctx}%</span> <div class="context-bar" style="display:inline-block;width:60px;vertical-align:middle"><div class="context-bar-fill ${ctxClass}" style="width:${Math.min(ctx, 100)}%"></div></div></div>` : ''}
+                  ${s.model ? `<div style="grid-column:span 2"><span style="color:#555">模型:</span> <span style="color:#a855f7">${escapeHtml(s.model)}</span></div>` : ''}
+                  ${s.inputTokens ? `<div><span style="color:#555">输入 Token:</span> <span style="color:#00d4aa">${s.inputTokens.toLocaleString()}</span></div>` : ''}
+                  ${s.outputTokens ? `<div><span style="color:#555">输出 Token:</span> <span style="color:#ffd700">${s.outputTokens.toLocaleString()}</span></div>` : ''}
+                  ${s.workspacePath ? `<div style="grid-column:span 2"><span style="color:#555">工作区:</span> <span style="color:#00a8e8">${escapeHtml(s.workspacePath)}</span></div>` : ''}
+                </div>
+              </div>
             </div>
-            <div style="display:flex;gap:20px;margin-top:8px;font-size:11px;color:#666">
-              ${s.messageCount ? `<span>消息: ${s.messageCount}</span>` : ''}
-              ${s.currentTool ? `<span>工具: <b style="color:#f97316">${escapeHtml(s.currentTool)}</b></span>` : ''}
-              ${s.workspacePath ? `<span>工作区: ${escapeHtml(s.workspacePath)}</span>` : ''}
-              <span>CWD: <span style="color:#00a8e8">${escapeHtml(p.cwd || '-')}</span></span>
-            </div>
+            <!-- Q&A -->
+            ${(s.question || s.answer) ? `
+            <div style="margin-top:12px;border-top:1px solid #1f1f35;padding-top:10px">
+              <div style="color:#888;font-size:10px;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">问答</div>
+              <div class="qa-full">
+                ${s.question ? `<div class="qa-block"><div class="qa-block-label">Q</div><div class="qa-block-text">${escapeHtml(s.question)}</div></div>` : ''}
+                ${s.answer ? `<div class="qa-block"><div class="qa-block-label">A</div><div class="qa-block-text">${escapeHtml(s.answer)}</div></div>` : ''}
+              </div>
+            </div>` : ''}
+            <!-- Command line -->
+            ${p.cmdline ? `
+            <div style="margin-top:10px;border-top:1px solid #1f1f35;padding-top:8px">
+              <div style="color:#555;font-size:10px;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">命令行</div>
+              <div style="color:#666;font-family:'SF Mono',Monaco,monospace;font-size:11px;word-break:break-all;line-height:1.5;background:#0a0a14;padding:8px 10px;border-radius:6px">${escapeHtml(p.cmdline)}</div>
+            </div>` : ''}
           </div>
         </td>
       </tr>`;

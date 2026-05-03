@@ -93,7 +93,7 @@ def collect_qoder_sessions():
 
     uuid_sessions = {}
     for uuid in uuids:
-        info = {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': ''}
+        info = {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': '', 'model': '', 'inputTokens': 0, 'outputTokens': 0}
 
         # Read tmux-status (state/timestamp/Q/A, SOH-separated with ANSI codes)
         status_file = os.path.join(QODER_CMUX_DIR, f'tmux-status-{uuid}.txt')
@@ -212,7 +212,7 @@ def collect_claude_sessions():
             jsonl_files.sort(key=lambda x: x[1], reverse=True)
             latest_file = jsonl_files[0][0]
 
-            info = {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': ''}
+            info = {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': '', 'model': '', 'inputTokens': 0, 'outputTokens': 0}
 
             try:
                 # Read last few lines of the JSONL file
@@ -226,6 +226,7 @@ def collect_claude_sessions():
                 last_user_msg = ''
                 last_assistant_msg = ''
                 tool_name = ''
+                model = ''
                 total_input_tokens = 0
                 total_output_tokens = 0
 
@@ -236,9 +237,10 @@ def collect_claude_sessions():
                         continue
 
                     msg_type = entry.get('type', '')
+                    msg_data = entry.get('message', {})
 
                     if msg_type == 'user' and not last_user_msg:
-                        content = entry.get('message', {}).get('content', '')
+                        content = msg_data.get('content', '')
                         if isinstance(content, list):
                             for block in content:
                                 if isinstance(block, dict) and block.get('type') == 'text':
@@ -247,26 +249,34 @@ def collect_claude_sessions():
                         elif isinstance(content, str):
                             last_user_msg = content[:200]
 
-                    elif msg_type == 'assistant' and not last_assistant_msg:
-                        content = entry.get('message', {}).get('content', [])
-                        if isinstance(content, list):
-                            for block in content:
-                                if isinstance(block, dict):
-                                    if block.get('type') == 'text' and not last_assistant_msg:
-                                        last_assistant_msg = block.get('text', '')[:200]
-                                    elif block.get('type') == 'tool_use' and not tool_name:
-                                        tool_name = block.get('name', '')
+                    elif msg_type == 'assistant':
+                        # Extract model from first (most recent) assistant message
+                        if not model:
+                            model = msg_data.get('model', '')
 
-                        # Token usage
-                        usage = entry.get('message', {}).get('usage', {})
+                        # Accumulate token usage from all assistant messages
+                        usage = msg_data.get('usage', {})
                         total_input_tokens += usage.get('input_tokens', 0)
                         total_output_tokens += usage.get('output_tokens', 0)
+
+                        if not last_assistant_msg:
+                            content = msg_data.get('content', [])
+                            if isinstance(content, list):
+                                for block in content:
+                                    if isinstance(block, dict):
+                                        if block.get('type') == 'text' and not last_assistant_msg:
+                                            last_assistant_msg = block.get('text', '')[:200]
+                                        elif block.get('type') == 'tool_use' and not tool_name:
+                                            tool_name = block.get('name', '')
 
                 info['question'] = last_user_msg
                 info['answer'] = last_assistant_msg
                 info['currentTool'] = tool_name
                 info['messageCount'] = len(lines)
                 info['workspacePath'] = decoded_path
+                info['model'] = model
+                info['inputTokens'] = total_input_tokens
+                info['outputTokens'] = total_output_tokens
 
                 # Determine status from last activity
                 if last_assistant_msg and not last_user_msg:
@@ -376,6 +386,57 @@ def scan_with_psutil():
                         elapsed = time.time() - create_time
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         elapsed = 0
+                        create_time = 0
+
+                    # Extra process details
+                    parent_pid = 0
+                    parent_name = ''
+                    try:
+                        pp = proc.parent()
+                        if pp:
+                            parent_pid = pp.pid
+                            parent_name = pp.name()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+                    start_time_str = ''
+                    try:
+                        start_time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(create_time))
+                    except Exception:
+                        pass
+
+                    proc_status = ''
+                    try:
+                        proc_status = proc.status()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+                    num_fds = 0
+                    try:
+                        num_fds = proc.num_fds()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+                    num_conns = 0
+                    try:
+                        num_conns = len(proc.connections())
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+                    vmem_mb = 0.0
+                    try:
+                        vmem_mb = proc.memory_info().vms / (1024 * 1024)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+
+                    io_read = 0
+                    io_write = 0
+                    try:
+                        io = proc.io_counters()
+                        io_read = io.read_bytes
+                        io_write = io.write_bytes
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+                        pass
 
                     results.append({
                         'tool': tool_name,
@@ -390,7 +451,16 @@ def scan_with_psutil():
                         'cwd': cwd,
                         'cmdline': cmdline[:200],
                         'threads': info.get('num_threads', 0),
-                        'session': {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': ''},
+                        'parentPid': parent_pid,
+                        'parentName': parent_name,
+                        'startTime': start_time_str,
+                        'processStatus': proc_status,
+                        'numFds': num_fds,
+                        'numConnections': num_conns,
+                        'vmemMB': round(vmem_mb, 1),
+                        'ioReadBytes': io_read,
+                        'ioWriteBytes': io_write,
+                        'session': {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': '', 'model': '', 'inputTokens': 0, 'outputTokens': 0},
                     })
                     break
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
@@ -403,7 +473,7 @@ def scan_with_ps():
     """Fallback: scan processes using ps command. Uses batch lsof for cwd."""
     try:
         output = subprocess.check_output(
-            ['ps', 'eo', 'pid,pcpu,pmem,rss,etime,args'],
+            ['ps', 'eo', 'pid,ppid,pcpu,pmem,rss,vsz,etime,args'],
             text=True,
             timeout=5
         )
@@ -416,10 +486,10 @@ def scan_with_ps():
         line = line.strip()
         if not line:
             continue
-        parts = line.split(None, 5)
-        if len(parts) < 6:
+        parts = line.split(None, 7)
+        if len(parts) < 8:
             continue
-        pid_str, cpu_str, mem_str, rss_str, etime_str, command = parts
+        pid_str, ppid_str, cpu_str, mem_str, rss_str, vsz_str, etime_str, command = parts
 
         for tool_name, pattern, ver_fn in TOOL_PATTERNS:
             if pattern.search(command):
@@ -430,7 +500,7 @@ def scan_with_ps():
                     pid = int(pid_str)
                 except ValueError:
                     continue
-                ai_procs.append((pid, cpu_str, mem_str, rss_str, etime_str, command, tool_name, version))
+                ai_procs.append((pid, ppid_str, vsz_str, cpu_str, mem_str, rss_str, etime_str, command, tool_name, version))
                 break
 
     if not ai_procs:
@@ -458,10 +528,22 @@ def scan_with_ps():
 
     # Second pass: build results
     results = []
-    for pid, cpu_str, mem_str, rss_str, etime_str, command, tool_name, version in ai_procs:
+    for pid, ppid_str, vsz_str, cpu_str, mem_str, rss_str, etime_str, command, tool_name, version in ai_procs:
         mem_mb = 0.0
         try:
             mem_mb = round(int(rss_str) / 1024, 1)
+        except ValueError:
+            pass
+
+        vmem_mb = 0.0
+        try:
+            vmem_mb = round(int(vsz_str) / 1024, 1)
+        except ValueError:
+            pass
+
+        parent_pid = 0
+        try:
+            parent_pid = int(ppid_str)
         except ValueError:
             pass
 
@@ -487,7 +569,16 @@ def scan_with_ps():
             'cwd': cwd,
             'cmdline': command[:200],
             'threads': 0,
-            'session': {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': ''},
+            'parentPid': parent_pid,
+            'parentName': '',
+            'startTime': '',
+            'processStatus': '',
+            'numFds': 0,
+            'numConnections': 0,
+            'vmemMB': vmem_mb,
+            'ioReadBytes': 0,
+            'ioWriteBytes': 0,
+            'session': {'status': 'unknown', 'question': '', 'answer': '', 'currentTool': '', 'messageCount': 0, 'contextPercent': 0, 'workspacePath': '', 'model': '', 'inputTokens': 0, 'outputTokens': 0},
         })
 
     return results
