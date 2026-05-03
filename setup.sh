@@ -27,7 +27,7 @@ else
 fi
 
 # Build PATH for the setup script itself
-export PATH="$BREW_PREFIX/bin:$BREW_PREFIX/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/.npm-global/bin:$BREW_PREFIX/bin:$BREW_PREFIX/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 echo -e "${BLUE}╔══════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║     AI Services Dashboard - Setup               ║${NC}"
@@ -60,11 +60,30 @@ NODE_VER=$(node -v 2>/dev/null || echo "unknown")
 NPM_VER=$(npm -v 2>/dev/null || echo "unknown")
 echo -e "  ✓ Node.js $NODE_VER (npm $NPM_VER)"
 
-# 2. Install pm2
+# 2. Install pm2 (prefer user-level ~/.npm-global to avoid sudo)
 echo -e "${YELLOW}[2/7] 安装 pm2...${NC}"
+NPM_GLOBAL="$HOME/.npm-global"
 if ! command -v pm2 &>/dev/null; then
-  npm install -g pm2
-  echo -e "  ✓ pm2 已安装"
+  # Try direct global install first
+  if npm install -g pm2 2>/dev/null; then
+    echo -e "  ✓ pm2 已安装（系统全局）"
+  else
+    # Fallback: install to user-level prefix
+    echo -e "  ${YELLOW}系统全局安装需要权限，使用用户级目录...${NC}"
+    mkdir -p "$NPM_GLOBAL/lib"
+    npm config set prefix "$NPM_GLOBAL"
+    npm install -g pm2
+    # Add to PATH for current and future sessions
+    export PATH="$NPM_GLOBAL/bin:$PATH"
+    PROFILE_FILE="$HOME/.zshrc"
+    [ ! -f "$PROFILE_FILE" ] && PROFILE_FILE="$HOME/.bashrc"
+    if ! grep -q '.npm-global/bin' "$PROFILE_FILE" 2>/dev/null; then
+      echo '' >> "$PROFILE_FILE"
+      echo '# npm global packages (user-level)' >> "$PROFILE_FILE"
+      echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$PROFILE_FILE"
+    fi
+    echo -e "  ✓ pm2 已安装（用户级 ~/.npm-global/）"
+  fi
 else
   echo -e "  ✓ pm2 已存在"
 fi

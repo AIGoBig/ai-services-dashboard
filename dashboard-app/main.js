@@ -14,7 +14,8 @@ const ECOSYSTEM_PATH = path.join(HOME, '.agents/services/ecosystem.config.js');
 function buildPath() {
   const brewPrefix = fs.existsSync('/opt/homebrew/bin/brew') ? '/opt/homebrew'
     : fs.existsSync('/usr/local/bin/brew') ? '/usr/local' : null;
-  const paths = [brewPrefix ? `${brewPrefix}/bin` : '', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  const npmGlobal = path.join(HOME, '.npm-global/bin');
+  const paths = [npmGlobal, brewPrefix ? `${brewPrefix}/bin` : '', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
   return paths.filter(Boolean).join(':');
 }
 const SYSTEM_PATH = buildPath();
