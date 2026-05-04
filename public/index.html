@@ -476,6 +476,7 @@
     <button class="tab active" onclick="switchTab('tasks')">定时任务</button>
     <button class="tab" onclick="switchTab('services')">系统服务</button>
     <button class="tab" onclick="switchTab('aicli')">AI CLI</button>
+    <button class="tab" onclick="switchTab('logs')">日志</button>
   </div>
 
   <!-- Tasks Tab -->
@@ -504,6 +505,31 @@
     </div>
     <div id="aicli"></div>
   </div>
+
+  <!-- Dashboard Log Tab -->
+  <div id="tab-logs" class="tab-content">
+    <div class="refresh-bar">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="refresh-btn" onclick="loadDashLogs()">刷新</button>
+        <select id="logSourceFilter" onchange="loadDashLogs()" style="background:#2a2a4a;color:#e0e0e0;border:1px solid #3a3a6a;border-radius:6px;padding:4px 8px;font-size:12px">
+          <option value="">全部来源</option>
+          <option value="system">系统</option>
+          <option value="service">PM2 服务</option>
+          <option value="ext-service">外部服务</option>
+          <option value="task">定时任务</option>
+          <option value="ai-cli">AI CLI</option>
+        </select>
+        <select id="logTypeFilter" onchange="loadDashLogs()" style="background:#2a2a4a;color:#e0e0e0;border:1px solid #3a3a6a;border-radius:6px;padding:4px 8px;font-size:12px">
+          <option value="">全部类型</option>
+          <option value="info">Info</option>
+          <option value="warn">Warn</option>
+          <option value="error">Error</option>
+        </select>
+      </div>
+      <span class="last-refresh" id="lastRefreshLogs">--</span>
+    </div>
+    <div id="dashlogs"></div>
+  </div>
 </div>
 
 <script>
@@ -522,6 +548,7 @@ function switchTab(tab) {
   if (tab === 'tasks') loadTasks();
   if (tab === 'services') loadServices();
   if (tab === 'aicli') loadAiCli();
+  if (tab === 'logs') loadDashLogs();
 }
 
 // ========== Tasks ==========
@@ -1090,12 +1117,71 @@ function toggleAiCliRow(rowId) {
   if (row) row.classList.toggle('show');
 }
 
+// ========== Dashboard Log ==========
+async function loadDashLogs() {
+  const source = document.getElementById('logSourceFilter').value;
+  const type = document.getElementById('logTypeFilter').value;
+  let url = '/api/dashboard-logs?limit=200';
+  if (source) url += `&source=${source}`;
+  if (type) url += `&type=${type}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  renderDashLogs(data);
+  document.getElementById('lastRefreshLogs').textContent =
+    '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
+}
+
+const logSourceLabels = { system: '系统', service: 'PM2服务', 'ext-service': '外部服务', task: '定时任务', 'ai-cli': 'AI CLI' };
+const logTypeColors = { info: '#00d4aa', warn: '#ffd700', error: '#ff6b6b' };
+
+function renderDashLogs(logs) {
+  const container = document.getElementById('dashlogs');
+  if (logs.length === 0) {
+    container.innerHTML = '<div style="color:#666;text-align:center;padding:60px;">暂无日志记录</div>';
+    return;
+  }
+
+  let html = `
+    <div style="background:#1a1a2e;border:1px solid #2a2a4a;border-radius:12px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#12121f;border-bottom:1px solid #2a2a4a">
+            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;width:160px">时间</th>
+            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;width:70px">类型</th>
+            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;width:90px">来源</th>
+            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">消息</th>
+            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;width:auto">详情</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  for (const l of logs) {
+    const typeColor = logTypeColors[l.type] || '#888';
+    const typeLabel = { info: 'INFO', warn: 'WARN', error: 'ERROR' }[l.type] || l.type.toUpperCase();
+    const srcLabel = logSourceLabels[l.source] || l.source;
+    const timeStr = new Date(l.time).toLocaleString('zh-CN');
+    html += `
+      <tr style="border-bottom:1px solid #1f1f35">
+        <td style="padding:8px 14px;color:#888;font-family:'SF Mono',Monaco,monospace;font-size:11px;white-space:nowrap">${timeStr}</td>
+        <td style="padding:8px 14px"><span style="color:${typeColor};font-weight:600;font-size:11px">${typeLabel}</span></td>
+        <td style="padding:8px 14px"><span style="background:${typeColor}15;color:${typeColor};padding:2px 8px;border-radius:4px;font-size:11px">${srcLabel}</span></td>
+        <td style="padding:8px 14px;color:#e0e0e0">${escapeHtml(l.message)}</td>
+        <td style="padding:8px 14px;color:#666;font-size:11px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(l.detail)}">${escapeHtml(l.detail)}</td>
+      </tr>`;
+  }
+
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
 // Init
 loadTasks();
 setInterval(() => {
   if (currentTab === 'tasks') loadTasks();
   if (currentTab === 'services') loadServices();
   if (currentTab === 'aicli') loadAiCli();
+  if (currentTab === 'logs') loadDashLogs();
 }, 30000);
 </script>
 </body>

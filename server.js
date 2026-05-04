@@ -52,6 +52,15 @@ const externalServiceDefs = fs.existsSync(EXT_SERVICES_FILE)
 
 if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
 
+// === Dashboard Event Log ===
+const dashLog = [];
+const DASH_LOG_MAX = 300;
+function addLog(type, source, message, detail) {
+  dashLog.unshift({ time: new Date().toISOString(), type, source, message, detail: detail || '' });
+  if (dashLog.length > DASH_LOG_MAX) dashLog.length = DASH_LOG_MAX;
+}
+addLog('info', 'system', 'Dashboard 服务启动', `端口 ${PORT}`);
+
 const defaultTasks = [
   {
     id: 'skills-daily-commit',
@@ -105,6 +114,8 @@ function runTask(taskId, manual = false) {
     entry.exitCode = code;
     logStream.write(`=== 退出码: ${code} ===\n`);
     logStream.end();
+    addLog(code === 0 ? 'info' : 'error', 'task',
+      `${prefix} ${task.name} ${code === 0 ? '成功' : '失败'}`, `退出码: ${code}`);
   });
 }
 
@@ -155,6 +166,7 @@ app.get('/api/tasks', (req, res) => {
 app.post('/api/tasks/:id/run', (req, res) => {
   const task = tasks.find(t => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: 'Task not found' });
+  addLog('info', 'task', `手动执行: ${task.name}`);
   runTask(task.id, true);
   res.json({ message: 'Task started', id: task.id });
 });
@@ -165,6 +177,7 @@ app.post('/api/tasks/:id/toggle', (req, res) => {
   task.enabled = !task.enabled;
   saveTasks(tasks);
   scheduleTask(task);
+  addLog('info', 'task', `${task.name} ${task.enabled ? '已启用' : '已暂停'}`);
   res.json({ enabled: task.enabled });
 });
 
@@ -225,23 +238,23 @@ app.get('/api/services/:name/logs', (req, res) => {
 });
 
 app.post('/api/services/:name/restart', async (req, res) => {
-  try { await pm2Exec(`restart ${req.params.name}`); res.json({ message: 'Restarted', name: req.params.name }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try { await pm2Exec(`restart ${req.params.name}`); addLog('info', 'service', `重启: ${req.params.name}`); res.json({ message: 'Restarted', name: req.params.name }); }
+  catch (e) { addLog('error', 'service', `重启失败: ${req.params.name}`, e.message); res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/services/:name/stop', async (req, res) => {
-  try { await pm2Exec(`stop ${req.params.name}`); res.json({ message: 'Stopped', name: req.params.name }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try { await pm2Exec(`stop ${req.params.name}`); addLog('warn', 'service', `停止: ${req.params.name}`); res.json({ message: 'Stopped', name: req.params.name }); }
+  catch (e) { addLog('error', 'service', `停止失败: ${req.params.name}`, e.message); res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/services/:name/start', async (req, res) => {
-  try { await pm2Exec(`start ${req.params.name}`); res.json({ message: 'Started', name: req.params.name }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try { await pm2Exec(`start ${req.params.name}`); addLog('info', 'service', `启动: ${req.params.name}`); res.json({ message: 'Started', name: req.params.name }); }
+  catch (e) { addLog('error', 'service', `启动失败: ${req.params.name}`, e.message); res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/services/:name/delete', async (req, res) => {
-  try { await pm2Exec(`delete ${req.params.name}`); res.json({ message: 'Deleted', name: req.params.name }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try { await pm2Exec(`delete ${req.params.name}`); addLog('warn', 'service', `删除: ${req.params.name}`); res.json({ message: 'Deleted', name: req.params.name }); }
+  catch (e) { addLog('error', 'service', `删除失败: ${req.params.name}`, e.message); res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/health', async (req, res) => {
@@ -330,7 +343,8 @@ app.post('/api/external-services/:id/toggle', async (req, res) => {
   }
   const plistPath = path.join(HOME, `Library/LaunchAgents/${svc.launchagentLabel}.plist`);
   exec(`launchctl ${action} ${plistPath} 2>&1`, { env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) { addLog('error', 'ext-service', `${action === 'load' ? '启动' : '停止'}失败: ${svc.name}`, err.message); return res.status(500).json({ error: err.message }); }
+    addLog(action === 'load' ? 'info' : 'warn', 'ext-service', `${action === 'load' ? '启动' : '停止'}: ${svc.name}`);
     res.json({ message: `${action}ed ${svc.name}`, id: svc.id });
   });
 });
@@ -344,6 +358,7 @@ app.get('/api/ai-cli-processes', (req, res) => {
   }
   exec(`python3 "${MONITOR_SCRIPT}" --json`, { timeout: 10000, env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout, stderr) => {
     if (err) {
+      addLog('error', 'ai-cli', '进程监控脚本执行失败', stderr || err.message);
       return res.json({ processes: [], error: stderr || err.message });
     }
     try {
@@ -358,9 +373,21 @@ app.get('/api/ai-cli-processes', (req, res) => {
       }
       res.json({ processes, summary: byTool, count: processes.length });
     } catch (e) {
+      addLog('error', 'ai-cli', '进程监控数据解析失败', e.message);
       res.json({ processes: [], error: 'Parse error: ' + e.message });
     }
   });
+});
+
+// === Dashboard Log API ===
+app.get('/api/dashboard-logs', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 100, DASH_LOG_MAX);
+  const source = req.query.source;
+  const type = req.query.type;
+  let logs = dashLog;
+  if (source) logs = logs.filter(l => l.source === source);
+  if (type) logs = logs.filter(l => l.type === type);
+  res.json(logs.slice(0, limit));
 });
 
 app.listen(PORT, () => {
