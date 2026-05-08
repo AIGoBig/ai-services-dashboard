@@ -4,1185 +4,201 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Services Dashboard</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0f0f23;
-    color: #e0e0e0;
-    min-height: 100vh;
-    padding: 40px 20px;
-  }
-  .container { max-width: 960px; margin: 0 auto; }
-  h1 {
-    font-size: 28px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    background: linear-gradient(90deg, #00d4aa, #00a8e8);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .subtitle { color: #888; font-size: 14px; margin-bottom: 24px; }
-
-  /* Tabs */
-  .tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 24px;
-    background: #12121f;
-    padding: 4px;
-    border-radius: 12px;
-    width: fit-content;
-  }
-  .tab {
-    padding: 8px 20px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    color: #888;
-    transition: all 0.2s;
-    font-family: inherit;
-  }
-  .tab.active {
-    background: #2a2a4a;
-    color: #e0e0e0;
-  }
-  .tab:hover:not(.active) { color: #ccc; }
-
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
-
-  /* Refresh bar */
-  .refresh-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-  }
-  .refresh-btn {
-    background: #2a2a4a;
-    color: #e0e0e0;
-    padding: 6px 14px;
-    font-size: 12px;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.2s;
-  }
-  .refresh-btn:hover { background: #3a3a6a; }
-  .last-refresh { color: #666; font-size: 12px; }
-
-  /* Task cards */
-  .task-card {
-    background: #1a1a2e;
-    border: 1px solid #2a2a4a;
-    border-radius: 16px;
-    padding: 24px;
-    margin-bottom: 20px;
-    transition: border-color 0.3s;
-  }
-  .task-card:hover { border-color: #3a3a6a; }
-  .task-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-  }
-  .task-name { font-size: 18px; font-weight: 600; }
-  .task-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-  }
-  .status-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: #444;
-  }
-  .status-dot.active { background: #00d4aa; box-shadow: 0 0 8px #00d4aa40; }
-  .status-dot.inactive { background: #ff6b6b; }
-  .task-meta {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 12px;
-    margin-bottom: 16px;
-  }
-  .meta-item {
-    background: #12121f;
-    padding: 12px 16px;
-    border-radius: 10px;
-    font-size: 13px;
-  }
-  .meta-label { color: #888; margin-bottom: 4px; }
-  .meta-value { color: #e0e0e0; font-weight: 500; }
-  .task-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  /* Service Card */
-  .service-card {
-    background: #1a1a2e;
-    border: 1px solid #2a2a4a;
-    border-radius: 16px;
-    padding: 20px 24px;
-    margin-bottom: 16px;
-    transition: border-color 0.3s;
-  }
-  .service-card:hover { border-color: #3a3a6a; }
-  .service-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 14px;
-  }
-  .service-name {
-    font-size: 17px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .svc-status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-  }
-  .svc-online { background: #00d4aa20; color: #00d4aa; }
-  .svc-offline { background: #ff6b6b20; color: #ff6b6b; }
-  .svc-restarting { background: #ffd70020; color: #ffd700; }
-
-  .service-metrics {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 14px;
-  }
-  .metric-box {
-    background: #12121f;
-    padding: 12px;
-    border-radius: 10px;
-    text-align: center;
-  }
-  .metric-value {
-    font-size: 18px;
-    font-weight: 600;
-    color: #e0e0e0;
-    margin-bottom: 4px;
-  }
-  .metric-label {
-    font-size: 11px;
-    color: #888;
-  }
-
-  /* Memory bar */
-  .mem-bar-container {
-    height: 6px;
-    background: #2a2a4a;
-    border-radius: 3px;
-    margin-top: 8px;
-    overflow: hidden;
-  }
-  .mem-bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.3s;
-  }
-  .mem-bar-fill.low { background: #00d4aa; }
-  .mem-bar-fill.mid { background: #ffd700; }
-  .mem-bar-fill.high { background: #ff6b6b; }
-
-  .service-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 4px;
-  }
-
-  button {
-    padding: 7px 16px;
-    border: none;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: inherit;
-  }
-  .btn-primary {
-    background: #00d4aa;
-    color: #0f0f23;
-  }
-  .btn-primary:hover { background: #00e6b8; }
-  .btn-secondary {
-    background: #2a2a4a;
-    color: #e0e0e0;
-  }
-  .btn-secondary:hover { background: #3a3a6a; }
-  .btn-ghost {
-    background: transparent;
-    border: 1px solid #3a3a6a;
-    color: #888;
-  }
-  .btn-ghost:hover { border-color: #00d4aa; color: #00d4aa; }
-  .btn-danger {
-    background: transparent;
-    border: 1px solid #3a3a6a;
-    color: #888;
-  }
-  .btn-danger:hover { border-color: #ff6b6b; color: #ff6b6b; }
-
-  .detail-panel, .log-panel {
-    margin-top: 14px;
-    padding: 16px;
-    background: #12121f;
-    border-radius: 12px;
-    display: none;
-  }
-  .detail-panel.show, .log-panel.show { display: block; }
-
-  .detail-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 10px;
-    font-size: 12px;
-  }
-  .detail-row {
-    display: flex;
-    gap: 8px;
-  }
-  .detail-key {
-    color: #888;
-    min-width: 80px;
-    flex-shrink: 0;
-  }
-  .detail-val {
-    color: #ccc;
-    word-break: break-all;
-    font-family: 'SF Mono', Monaco, monospace;
-  }
-  .detail-val.path {
-    color: #00a8e8;
-  }
-
-  .log-toolbar {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 10px;
-    align-items: center;
-  }
-  .log-tab {
-    padding: 4px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    cursor: pointer;
-    border: 1px solid #2a2a4a;
-    background: transparent;
-    color: #888;
-  }
-  .log-tab.active {
-    background: #2a2a4a;
-    color: #e0e0e0;
-    border-color: #3a3a6a;
-  }
-  .log-content {
-    background: #0a0a14;
-    border-radius: 8px;
-    padding: 12px;
-    font-family: 'SF Mono', Monaco, monospace;
-    font-size: 11px;
-    line-height: 1.6;
-    max-height: 280px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    color: #a0a0b0;
-  }
-  .log-empty {
-    color: #666;
-    text-align: center;
-    padding: 20px;
-  }
-
-  .health-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    margin-left: 8px;
-  }
-  .health-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-  }
-  .health-dot.ok { background: #00d4aa; }
-  .health-dot.fail { background: #ff6b6b; }
-  .health-dot.unknown { background: #888; }
-
-  .logs-panel {
-    margin-top: 16px;
-    padding: 16px;
-    background: #0a0a14;
-    border-radius: 10px;
-    font-family: 'SF Mono', Monaco, monospace;
-    font-size: 12px;
-    line-height: 1.6;
-    max-height: 300px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    color: #a0a0b0;
-    display: none;
-  }
-  .logs-panel.show { display: block; }
-  .history-panel {
-    margin-top: 12px;
-    display: none;
-  }
-  .history-panel.show { display: block; }
-  .history-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: #12121f;
-    border-radius: 6px;
-    margin-bottom: 6px;
-    font-size: 12px;
-  }
-  .history-item .badge {
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-  }
-  .badge-success { background: #00d4aa20; color: #00d4aa; }
-  .badge-failed { background: #ff6b6b20; color: #ff6b6b; }
-  .badge-running { background: #ffd70020; color: #ffd700; }
-  .badge-scheduled { background: #88888820; color: #888; }
-
-  .section-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin: 24px 0 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid #2a2a4a;
-  }
-  .svc-type-badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 600;
-    margin-left: 6px;
-  }
-  .type-launchagent { background: #a855f720; color: #a855f7; }
-  .type-standalone { background: #f59e0b20; color: #f59e0b; }
-  .type-pm2 { background: #00a8e820; color: #00a8e8; }
-
-  /* Session status indicators */
-  .session-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .session-working { background: #f9731620; color: #f97316; }
-  .session-thinking { background: #a855f720; color: #a855f7; }
-  .session-idle { background: #6b728020; color: #6b7280; }
-  .session-done { background: #00d4aa20; color: #00d4aa; }
-  .session-error { background: #ff6b6b20; color: #ff6b6b; }
-  .session-pending { background: #f59e0b20; color: #f59e0b; }
-  .session-unknown { background: #37415120; color: #6b7280; }
-
-  .session-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    display: inline-block;
-  }
-  .session-working .session-dot { background: #f97316; animation: pulse-dot 1.5s ease-in-out infinite; }
-  .session-thinking .session-dot { background: #a855f7; animation: pulse-dot 1s ease-in-out infinite; }
-  .session-idle .session-dot { background: #6b7280; }
-  .session-done .session-dot { background: #00d4aa; }
-  .session-error .session-dot { background: #ff6b6b; }
-
-  @keyframes pulse-dot {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
-
-  .qa-preview {
-    color: #888;
-    font-size: 11px;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .qa-preview .qa-label {
-    color: #666;
-    font-weight: 600;
-    margin-right: 2px;
-  }
-  .context-bar {
-    height: 4px;
-    background: #2a2a4a;
-    border-radius: 2px;
-    overflow: hidden;
-    margin-top: 2px;
-  }
-  .context-bar-fill {
-    height: 100%;
-    border-radius: 2px;
-    transition: width 0.3s;
-  }
-  .context-low { background: #00d4aa; }
-  .context-mid { background: #ffd700; }
-  .context-high { background: #ff6b6b; }
-  .row-detail {
-    display: none;
-    padding: 12px 14px;
-    background: #0f0f1a;
-    border-bottom: 1px solid #2a2a4a;
-  }
-  .row-detail.show { display: table-row; }
-  .row-detail td { font-size: 12px; line-height: 1.6; }
-  .qa-full { max-height: 120px; overflow-y: auto; }
-  .qa-full .qa-block { margin-bottom: 8px; }
-  .qa-full .qa-block-label { color: #888; font-weight: 600; font-size: 11px; margin-bottom: 2px; }
-  .qa-full .qa-block-text { color: #ccc; font-family: inherit; white-space: pre-wrap; word-break: break-all; }
-</style>
+<link rel="stylesheet" href="/css/variables.css">
+<link rel="stylesheet" href="/css/main.css">
 </head>
 <body>
-<div class="container">
-  <h1>AI Services Dashboard</h1>
-  <p class="subtitle">定时任务与系统服务统一监控面板</p>
 
-  <div class="tabs">
-    <button class="tab active" onclick="switchTab('tasks')">定时任务</button>
-    <button class="tab" onclick="switchTab('services')">系统服务</button>
-    <button class="tab" onclick="switchTab('aicli')">AI CLI</button>
-    <button class="tab" onclick="switchTab('logs')">日志</button>
-  </div>
-
-  <!-- Tasks Tab -->
-  <div id="tab-tasks" class="tab-content active">
-    <div class="refresh-bar">
-      <button class="refresh-btn" onclick="loadTasks()">刷新</button>
-      <span class="last-refresh" id="lastRefreshTasks">--</span>
-    </div>
-    <div id="tasks"></div>
-  </div>
-
-  <!-- Services Tab -->
-  <div id="tab-services" class="tab-content">
-    <div class="refresh-bar">
-      <button class="refresh-btn" onclick="loadServices()">刷新</button>
-      <span class="last-refresh" id="lastRefreshServices">--</span>
-    </div>
-    <div id="services"></div>
-  </div>
-
-  <!-- AI CLI Tab -->
-  <div id="tab-aicli" class="tab-content">
-    <div class="refresh-bar">
-      <button class="refresh-btn" onclick="loadAiCli()">刷新</button>
-      <span class="last-refresh" id="lastRefreshAiCli">--</span>
-    </div>
-    <div id="aicli"></div>
-  </div>
-
-  <!-- Dashboard Log Tab -->
-  <div id="tab-logs" class="tab-content">
-    <div class="refresh-bar">
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="refresh-btn" onclick="loadDashLogs()">刷新</button>
-        <select id="logSourceFilter" onchange="loadDashLogs()" style="background:#2a2a4a;color:#e0e0e0;border:1px solid #3a3a6a;border-radius:6px;padding:4px 8px;font-size:12px">
-          <option value="">全部来源</option>
-          <option value="system">系统</option>
-          <option value="service">PM2 服务</option>
-          <option value="ext-service">外部服务</option>
-          <option value="task">定时任务</option>
-          <option value="ai-cli">AI CLI</option>
-        </select>
-        <select id="logTypeFilter" onchange="loadDashLogs()" style="background:#2a2a4a;color:#e0e0e0;border:1px solid #3a3a6a;border-radius:6px;padding:4px 8px;font-size:12px">
-          <option value="">全部类型</option>
-          <option value="info">Info</option>
-          <option value="warn">Warn</option>
-          <option value="error">Error</option>
-        </select>
-      </div>
-      <span class="last-refresh" id="lastRefreshLogs">--</span>
-    </div>
-    <div id="dashlogs"></div>
-  </div>
+<!-- Mobile Header (visible < 768px) -->
+<div class="mobile-header">
+  <button class="hamburger-btn" onclick="toggleMobileSidebar()" aria-label="Toggle navigation">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+  <span class="mobile-title">AI Services Dashboard</span>
 </div>
 
-<script>
-let currentTab = 'tasks';
-let healthData = {};
-let serviceDetails = {};
-let openLogs = {};
-let openDetails = {};
+<!-- Mobile Sidebar Backdrop -->
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleMobileSidebar()"></div>
 
-function switchTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById('tab-' + tab).classList.add('active');
-  if (tab === 'tasks') loadTasks();
-  if (tab === 'services') loadServices();
-  if (tab === 'aicli') loadAiCli();
-  if (tab === 'logs') loadDashLogs();
-}
+<!-- App Layout -->
+<div class="app-layout">
 
-// ========== Tasks ==========
-async function loadTasks() {
-  const res = await fetch('/api/tasks');
-  const data = await res.json();
-  renderTasks(data);
-  document.getElementById('lastRefreshTasks').textContent =
-    '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
-}
-
-function renderTasks(tasks) {
-  const container = document.getElementById('tasks');
-  container.innerHTML = tasks.map(t => `
-    <div class="task-card">
-      <div class="task-header">
-        <div class="task-name">${t.name}</div>
-        <div class="task-status">
-          <div class="status-dot ${t.enabled ? 'active' : 'inactive'}"></div>
-          <span>${t.enabled ? '运行中' : '已暂停'}</span>
-        </div>
+  <!-- Sidebar Navigation -->
+  <nav class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
+    <!-- Brand -->
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-icon">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
       </div>
-      <div class="task-meta">
-        <div class="meta-item">
-          <div class="meta-label">调度规则</div>
-          <div class="meta-value">${t.schedule}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">下次执行</div>
-          <div class="meta-value">${t.nextRun ? new Date(t.nextRun).toLocaleString('zh-CN') : '无'}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">上次执行</div>
-          <div class="meta-value">${t.lastRun ? new Date(t.lastRun.time).toLocaleString('zh-CN') + ' · ' + statusText(t.lastRun.status) : '从未执行'}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">描述</div>
-          <div class="meta-value">${t.description}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">执行次数</div>
-          <div class="meta-value">${t.historyCount || 0}</div>
-        </div>
+      <div class="sidebar-brand-text">
+        <h1>AI Services</h1>
+        <div class="subtitle">统一监控面板</div>
       </div>
-      <div class="task-actions">
-        <button class="btn-primary" onclick="runTask('${t.id}')">立即执行</button>
-        <button class="btn-secondary" onclick="toggleTask('${t.id}')">${t.enabled ? '暂停' : '启用'}</button>
-        <button class="btn-ghost" onclick="toggleLogs('${t.id}')">查看日志</button>
-        <button class="btn-ghost" onclick="toggleHistory('${t.id}')">执行历史</button>
-      </div>
-      <div class="logs-panel" id="logs-${t.id}"></div>
-      <div class="history-panel" id="history-${t.id}"></div>
     </div>
-  `).join('');
-}
 
-// ========== Services ==========
-async function loadServices() {
-  const [svcRes, healthRes, extRes] = await Promise.all([
-    fetch('/api/services'),
-    fetch('/api/health').catch(() => ({ json: () => ({}) })),
-    fetch('/api/external-services').catch(() => ({ json: () => [] }))
-  ]);
-  const svcData = await svcRes.json();
-  healthData = await healthRes.json();
-  const extServices = await extRes.json();
-  renderServices(svcData.services || [], extServices);
-  document.getElementById('lastRefreshServices').textContent =
-    '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
-}
-
-function renderPm2ServiceCard(s) {
-  const health = healthData[s.name];
-  const healthHtml = health
-    ? `<span class="health-indicator"><span class="health-dot ${health.healthy ? 'ok' : 'fail'}"></span>${health.healthy ? '端口正常' : '端口不通'} :${health.port}</span>`
-    : '';
-
-  const statusClass = s.status === 'online' ? 'svc-online' : (s.status === 'stopped' ? 'svc-offline' : 'svc-restarting');
-  const memMB = s.memory ? (s.memory / 1024 / 1024).toFixed(1) : 0;
-  const memPercent = Math.min((memMB / 500) * 100, 100);
-  const memBarClass = memPercent < 30 ? 'low' : (memPercent < 70 ? 'mid' : 'high');
-  const isOnline = s.status === 'online';
-
-  return `
-    <div class="service-card" id="svc-card-${s.name}">
-      <div class="service-card-header">
-        <div class="service-name">
-          ${s.name}
-          <span class="svc-type-badge type-pm2">PM2</span>
-          <span class="svc-status-badge ${statusClass}">
-            <span class="status-dot ${isOnline ? 'active' : 'inactive'}"></span>
-            ${s.status}
-          </span>
-          ${healthHtml}
-        </div>
-      </div>
-      <div class="service-metrics">
-        <div class="metric-box"><div class="metric-value">${s.pid || '-'}</div><div class="metric-label">PID</div></div>
-        <div class="metric-box"><div class="metric-value">${formatUptime(s.uptime ? Date.now() - s.uptime : 0)}</div><div class="metric-label">运行时间</div></div>
-        <div class="metric-box"><div class="metric-value">${s.cpu || 0}%</div><div class="metric-label">CPU</div></div>
-        <div class="metric-box"><div class="metric-value">${memMB} MB</div><div class="metric-label">内存</div><div class="mem-bar-container"><div class="mem-bar-fill ${memBarClass}" style="width:${memPercent}%"></div></div></div>
-        <div class="metric-box"><div class="metric-value">${s.restarts || 0}</div><div class="metric-label">重启</div></div>
-        <div class="metric-box"><div class="metric-value">${s.pmId != null ? '#' + s.pmId : '-'}</div><div class="metric-label">PM2 ID</div></div>
-      </div>
-      <div class="service-actions">
-        ${isOnline
-          ? `<button class="btn-primary" onclick="svcAction('${s.name}', 'restart')">重启</button><button class="btn-secondary" onclick="svcAction('${s.name}', 'stop')">停止</button>`
-          : `<button class="btn-primary" onclick="svcAction('${s.name}', 'start')">启动</button>`}
-        <button class="btn-ghost" onclick="toggleSvcLogs('${s.name}')">日志</button>
-        <button class="btn-ghost" onclick="toggleSvcDetail('${s.name}')">详情</button>
-        <button class="btn-danger" onclick="svcAction('${s.name}', 'delete')">移除</button>
-      </div>
-      <div class="log-panel" id="svc-logs-${s.name}"></div>
-      <div class="detail-panel" id="svc-detail-${s.name}"></div>
-    </div>`;
-}
-
-function renderExtServiceCard(svc) {
-  const typeBadge = svc.type === 'launchagent' ? '<span class="svc-type-badge type-launchagent">LaunchAgent</span>' : '<span class="svc-type-badge type-standalone">独立进程</span>';
-  const statusClass = svc.running ? 'svc-online' : 'svc-offline';
-  const healthHtml = svc.port
-    ? `<span class="health-indicator"><span class="health-dot ${svc.healthy ? 'ok' : 'fail'}"></span>${svc.healthy ? '端口正常' : '端口不通'} :${svc.port}</span>`
-    : '';
-  const memMB = svc.memory ? (svc.memory / 1024 / 1024).toFixed(1) : 0;
-  const memPercent = Math.min((memMB / 500) * 100, 100);
-  const memBarClass = memPercent < 30 ? 'low' : (memPercent < 70 ? 'mid' : 'high');
-
-  // Extra ports display
-  let extraPortsHtml = '';
-  if (svc.extraPortStatus) {
-    extraPortsHtml = Object.entries(svc.extraPortStatus).map(([p, ok]) =>
-      `<span class="health-indicator"><span class="health-dot ${ok ? 'ok' : 'fail'}"></span>:${p}</span>`
-    ).join('');
-  }
-
-  // Actions: LaunchAgent can be load/unload
-  let actionsHtml = '';
-  if (svc.type === 'launchagent') {
-    actionsHtml = svc.running
-      ? `<button class="btn-secondary" onclick="extSvcAction('${svc.id}', 'unload')">停止</button>`
-      : `<button class="btn-primary" onclick="extSvcAction('${svc.id}', 'load')">启动</button>`;
-  }
-
-  return `
-    <div class="service-card">
-      <div class="service-card-header">
-        <div class="service-name">
-          ${escapeHtml(svc.name || svc.id)}
-          ${typeBadge}
-          <span class="svc-status-badge ${statusClass}">
-            <span class="status-dot ${svc.running ? 'active' : 'inactive'}"></span>
-            ${svc.running ? '运行中' : '已停止'}
-          </span>
-          ${healthHtml}${extraPortsHtml}
-        </div>
-      </div>
-      ${svc.description ? `<div style="color:#888;font-size:13px;margin-bottom:12px">${escapeHtml(svc.description)}</div>` : ''}
-      ${svc.command ? `<div style="color:#555;font-size:11px;margin-bottom:12px;font-family:'SF Mono',Monaco,monospace;word-break:break-all">${escapeHtml(svc.command)}</div>` : ''}
-      ${svc.launchagentLabel ? `<div style="color:#555;font-size:11px;margin-bottom:10px">LaunchAgent: <span style="color:#a855f7">${escapeHtml(svc.launchagentLabel)}</span></div>` : ''}
-      <div class="service-metrics">
-        <div class="metric-box"><div class="metric-value">${svc.pid || '-'}</div><div class="metric-label">PID</div></div>
-        <div class="metric-box"><div class="metric-value">${svc.cpu.toFixed(1)}%</div><div class="metric-label">CPU</div></div>
-        <div class="metric-box"><div class="metric-value">${memMB} MB</div><div class="metric-label">内存</div><div class="mem-bar-container"><div class="mem-bar-fill ${memBarClass}" style="width:${memPercent}%"></div></div></div>
-        <div class="metric-box"><div class="metric-value">${svc.port || '-'}</div><div class="metric-label">端口</div></div>
-      </div>
-      ${actionsHtml ? `<div class="service-actions">${actionsHtml}</div>` : ''}
-    </div>`;
-}
-
-function renderServices(services, extServices) {
-  const container = document.getElementById('services');
-  let html = '';
-
-  // PM2 services section
-  html += '<div class="section-label">PM2 托管服务</div>';
-  if (services.length === 0) {
-    html += '<div style="color:#666;text-align:center;padding:40px;">无 PM2 服务</div>';
-  } else {
-    html += services.map(s => renderPm2ServiceCard(s)).join('');
-  }
-
-  // External services section
-  if (extServices && extServices.length > 0) {
-    html += '<div class="section-label">外部服务</div>';
-    html += extServices.map(s => renderExtServiceCard(s)).join('');
-  }
-
-  container.innerHTML = html;
-
-  // Restore open panels for PM2 services
-  for (const name of Object.keys(openLogs)) {
-    if (openLogs[name]) loadSvcLogs(name, openLogs[name]);
-  }
-  for (const name of Object.keys(openDetails)) {
-    if (openDetails[name]) loadSvcDetail(name);
-  }
-}
-
-async function svcAction(name, action) {
-  if (action === 'delete' && !confirm(`确定从 pm2 移除 "${name}" 吗？`)) return;
-  await fetch(`/api/services/${name}/${action}`, { method: 'POST' });
-  setTimeout(loadServices, 800);
-}
-
-async function extSvcAction(id, action) {
-  if (action === 'unload' && !confirm(`确定停止此服务吗？`)) return;
-  await fetch(`/api/external-services/${id}/toggle`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action })
-  });
-  setTimeout(loadServices, 1500);
-}
-
-async function toggleSvcLogs(name) {
-  const panel = document.getElementById(`svc-logs-${name}`);
-  const isShow = panel.classList.contains('show');
-  if (isShow) {
-    panel.classList.remove('show');
-    openLogs[name] = null;
-    return;
-  }
-  openLogs[name] = 'out';
-  await loadSvcLogs(name, 'out');
-}
-
-async function loadSvcLogs(name, type) {
-  const panel = document.getElementById(`svc-logs-${name}`);
-  const res = await fetch(`/api/services/${name}/logs?type=${type}&lines=100`);
-  const data = await res.json();
-
-  panel.innerHTML = `
-    <div class="log-toolbar">
-      <button class="log-tab ${type === 'out' ? 'active' : ''}" onclick="switchLogType('${name}', 'out')">stdout</button>
-      <button class="log-tab ${type === 'err' ? 'active' : ''}" onclick="switchLogType('${name}', 'err')">stderr</button>
-      <span style="color:#666;font-size:11px;margin-left:auto">${data.exists ? data.totalLines + ' 行' : '无日志'}</span>
+    <!-- Navigation -->
+    <div class="sidebar-nav">
+      <div class="sidebar-nav-label">监控</div>
+      <button class="nav-item active" data-tab="overview" onclick="switchTab('overview')" tabindex="0" role="tab" aria-selected="true">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="nav-label">总览</span>
+      </button>
+      <button class="nav-item" data-tab="services" onclick="switchTab('services')" tabindex="0" role="tab" aria-selected="false">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1"/><circle cx="6" cy="18" r="1"/></svg>
+        <span class="nav-label">服务</span>
+      </button>
+      <button class="nav-item" data-tab="tasks" onclick="switchTab('tasks')" tabindex="0" role="tab" aria-selected="false">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span class="nav-label">定时任务</span>
+      </button>
+      <div class="sidebar-nav-label" style="margin-top:16px">工具</div>
+      <button class="nav-item" data-tab="aicli" onclick="switchTab('aicli')" tabindex="0" role="tab" aria-selected="false">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <span class="nav-label">AI CLI</span>
+      </button>
+      <button class="nav-item" data-tab="logs" onclick="switchTab('logs')" tabindex="0" role="tab" aria-selected="false">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span class="nav-label">日志</span>
+      </button>
+      <button class="nav-item" data-tab="webviews" onclick="switchTab('webviews')" tabindex="0" role="tab" aria-selected="false">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        <span class="nav-label">页面看板</span>
+      </button>
     </div>
-    <div class="log-content">${data.exists ? escapeHtml(data.logs) : '<div class="log-empty">暂无日志</div>'}</div>
-  `;
-  panel.classList.add('show');
-}
 
-async function switchLogType(name, type) {
-  openLogs[name] = type;
-  await loadSvcLogs(name, type);
-}
-
-async function toggleSvcDetail(name) {
-  const panel = document.getElementById(`svc-detail-${name}`);
-  const isShow = panel.classList.contains('show');
-  if (isShow) {
-    panel.classList.remove('show');
-    openDetails[name] = false;
-    return;
-  }
-  openDetails[name] = true;
-  await loadSvcDetail(name);
-}
-
-async function loadSvcDetail(name) {
-  const panel = document.getElementById(`svc-detail-${name}`);
-  const res = await fetch(`/api/services/${name}/details`);
-  const data = await res.json();
-
-  if (data.error) {
-    panel.innerHTML = `<div style="color:#ff6b6b">${data.error}</div>`;
-    panel.classList.add('show');
-    return;
-  }
-
-  const rows = [
-    ['启动命令', data.execPath, 'path'],
-    ['工作目录', data.cwd, 'path'],
-    ['启动参数', (data.args || []).join(' ') || '-'],
-    ['Node 版本', data.nodeVersion || '-'],
-    ['版本', data.version || '-'],
-    ['创建时间', data.createdAt ? new Date(data.createdAt).toLocaleString('zh-CN') : '-'],
-    ['运行模式', data.execMode || '-'],
-    ['实例数', data.instances || '-'],
-    ['不稳定重启', data.unstableRestarts || '0'],
-    ['退出码', data.exitCode != null ? data.exitCode : '-'],
-    ['PID 文件', data.pidPath, 'path'],
-    ['Stdout 日志', data.outLogPath, 'path'],
-    ['Stderr 日志', data.errLogPath, 'path'],
-  ];
-
-  panel.innerHTML = `
-    <div class="detail-grid">
-      ${rows.map(([k, v, cls]) => `
-        <div class="detail-row">
-          <span class="detail-key">${k}</span>
-          <span class="detail-val ${cls || ''}">${escapeHtml(String(v || '-'))}</span>
-        </div>
-      `).join('')}
+    <!-- Status Strip -->
+    <div class="sidebar-status" id="sidebarStatus">
+      <span class="status-dot-mini online" id="sidebarOnlineDot"></span>
+      <span class="sidebar-status-text" id="sidebarStatusText">--/-- 在线</span>
+      <span class="status-dot-mini warning" id="sidebarIssueDot" style="display:none"></span>
+      <span class="sidebar-status-text" id="sidebarIssueText" style="display:none"></span>
     </div>
-  `;
-  panel.classList.add('show');
-}
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
+    <!-- Theme Toggle -->
+    <button class="collapse-toggle" onclick="toggleTheme()" tabindex="0" aria-label="Toggle theme">
+      <svg class="toggle-icon" id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <span class="collapse-label">浅色模式</span>
+    </button>
 
-function formatUptime(ms) {
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return sec + 's';
-  const min = Math.floor(sec / 60);
-  if (min < 60) return min + 'm';
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return hr + 'h' + (min % 60) + 'm';
-  const day = Math.floor(hr / 24);
-  return day + 'd' + (hr % 24) + 'h';
-}
+    <!-- Collapse Toggle -->
+    <button class="collapse-toggle" onclick="toggleSidebar()" tabindex="0" aria-label="Toggle sidebar">
+      <svg class="toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+      <span class="collapse-label">收起侧栏</span>
+    </button>
+  </nav>
 
-function statusText(s) {
-  const map = { success: '成功', failed: '失败', running: '执行中' };
-  return map[s] || s;
-}
+  <!-- Main Content Area -->
+  <main class="main-content" id="mainContent">
 
-// ========== Task actions ==========
-async function runTask(id) {
-  await fetch(`/api/tasks/${id}/run`, { method: 'POST' });
-  setTimeout(loadTasks, 500);
-}
-
-async function toggleTask(id) {
-  await fetch(`/api/tasks/${id}/toggle`, { method: 'POST' });
-  loadTasks();
-}
-
-async function toggleLogs(id) {
-  const panel = document.getElementById(`logs-${id}`);
-  const isShow = panel.classList.contains('show');
-  if (isShow) {
-    panel.classList.remove('show');
-    return;
-  }
-  const res = await fetch(`/api/tasks/${id}/logs`);
-  const data = await res.json();
-  panel.textContent = data.logs || '暂无日志';
-  panel.classList.add('show');
-}
-
-async function toggleHistory(id) {
-  const panel = document.getElementById(`history-${id}`);
-  const isShow = panel.classList.contains('show');
-  if (isShow) {
-    panel.classList.remove('show');
-    return;
-  }
-  const res = await fetch(`/api/tasks/${id}/history`);
-  const data = await res.json();
-  panel.innerHTML = data.length === 0
-    ? '<div style="color:#666;padding:8px;">暂无记录</div>'
-    : data.map(h => `
-      <div class="history-item">
-        <span>${new Date(h.time).toLocaleString('zh-CN')} · ${h.type === 'manual' ? '手动' : '定时'}</span>
-        <span class="badge badge-${h.status}">${statusText(h.status)}</span>
+    <!-- Overview Tab -->
+    <div id="tab-overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-overview">
+      <div class="refresh-bar">
+        <button class="refresh-btn" onclick="loadOverview()">
+          <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+        <span class="last-refresh" id="lastRefreshOverview">--</span>
       </div>
-    `).join('');
-  panel.classList.add('show');
-}
+      <div id="overview"></div>
+    </div>
 
-function formatBytes(bytes) {
-  if (!bytes || bytes === 0) return '-';
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
-  return (bytes / 1073741824).toFixed(2) + ' GB';
-}
+    <!-- Services Tab -->
+    <div id="tab-services" class="tab-content" role="tabpanel" aria-labelledby="tab-services">
+      <div class="refresh-bar">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="refresh-btn" onclick="loadUnifiedServices()">
+            <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            刷新
+          </button>
+        </div>
+        <span class="last-refresh" id="lastRefreshServices">--</span>
+      </div>
+      <div id="svc-cat-filter" class="cat-filter"></div>
+      <div id="services"></div>
+    </div>
 
-// ========== AI CLI Processes ==========
-async function loadAiCli() {
-  const res = await fetch('/api/ai-cli-processes');
-  const data = await res.json();
-  renderAiCli(data);
-  document.getElementById('lastRefreshAiCli').textContent =
-    '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
-}
+    <!-- Tasks Tab -->
+    <div id="tab-tasks" class="tab-content" role="tabpanel" aria-labelledby="tab-tasks">
+      <div class="refresh-bar">
+        <button class="refresh-btn" onclick="loadTasks()">
+          <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+        <span class="last-refresh" id="lastRefreshTasks">--</span>
+      </div>
+      <div id="tasks"></div>
+    </div>
 
-function renderAiCli(data) {
-  const container = document.getElementById('aicli');
-  const processes = data.processes || [];
-  const summary = data.summary || {};
-  const error = data.error;
+    <!-- AI CLI Tab -->
+    <div id="tab-aicli" class="tab-content" role="tabpanel" aria-labelledby="tab-aicli">
+      <div class="refresh-bar">
+        <button class="refresh-btn" onclick="loadAiCli()">
+          <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+        <span class="last-refresh" id="lastRefreshAiCli">--</span>
+      </div>
+      <div id="aicli"></div>
+    </div>
 
-  if (error && processes.length === 0) {
-    container.innerHTML = `<div style="color:#ff6b6b;text-align:center;padding:60px;">${escapeHtml(error)}</div>`;
-    return;
-  }
-  if (processes.length === 0) {
-    container.innerHTML = '<div style="color:#666;text-align:center;padding:60px;">未检测到 AI CLI 进程</div>';
-    return;
-  }
+    <!-- Dashboard Log Tab -->
+    <div id="tab-logs" class="tab-content" role="tabpanel" aria-labelledby="tab-logs">
+      <div class="refresh-bar">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="refresh-btn" onclick="loadDashLogs()">
+            <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            刷新
+          </button>
+          <select id="logSourceFilter" onchange="loadDashLogs()" style="background:var(--color-bg-secondary);color:var(--color-text-primary);border:1px solid var(--color-border-hover);border-radius:var(--radius-xs);padding:4px 8px;font-size:12px;font-family:var(--font-sans)">
+            <option value="">全部来源</option>
+            <option value="system">系统</option>
+            <option value="service">服务</option>
+            <option value="task">定时任务</option>
+            <option value="ai-cli">AI CLI</option>
+          </select>
+          <select id="logTypeFilter" onchange="loadDashLogs()" style="background:var(--color-bg-secondary);color:var(--color-text-primary);border:1px solid var(--color-border-hover);border-radius:var(--radius-xs);padding:4px 8px;font-size:12px;font-family:var(--font-sans)">
+            <option value="">全部类型</option>
+            <option value="info">Info</option>
+            <option value="warn">Warn</option>
+            <option value="error">Error</option>
+          </select>
+        </div>
+        <span class="last-refresh" id="lastRefreshLogs">--</span>
+      </div>
+      <div id="dashlogs"></div>
+    </div>
 
-  let html = '';
+    <!-- Web Views Tab -->
+    <div id="tab-webviews" class="tab-content" role="tabpanel" aria-labelledby="tab-webviews">
+      <div class="refresh-bar">
+        <button class="refresh-btn" onclick="loadWebViews()">
+          <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+        <span class="last-refresh" id="lastRefreshWebViews">--</span>
+      </div>
+      <div id="webviews" class="webview-grid"></div>
+    </div>
 
-  // Status summary row
-  const statusCounts = { working: 0, thinking: 0, idle: 0, done: 0, error: 0, unknown: 0 };
-  for (const p of processes) {
-    const st = (p.session && p.session.status) || 'unknown';
-    statusCounts[st] = (statusCounts[st] || 0) + 1;
-  }
-  const statusLabels = { working: '工作中', thinking: '思考中', idle: '空闲', done: '已完成', error: '错误', unknown: '未知' };
-  const statusIcons = { working: '🟠', thinking: '🟣', idle: '⚪', done: '🟢', error: '🔴', unknown: '⚫' };
+  </main>
+</div>
 
-  html += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">';
-  for (const [st, count] of Object.entries(statusCounts)) {
-    if (count > 0) {
-      html += `<span class="session-status session-${st}"><span class="session-dot"></span>${statusLabels[st]} ${count}</span>`;
-    }
-  }
-  html += '</div>';
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
 
-  // Summary cards per tool
-  const toolNames = Object.keys(summary);
-  if (toolNames.length > 0) {
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">';
-    for (const [tool, s] of Object.entries(summary)) {
-      html += `
-        <div class="metric-box" style="padding:16px;text-align:left">
-          <div style="font-size:14px;font-weight:600;margin-bottom:8px">${escapeHtml(tool)}</div>
-          <div style="display:flex;gap:16px;font-size:12px;color:#888">
-            <span>进程: <b style="color:#e0e0e0">${s.count}</b></span>
-            <span>CPU: <b style="color:#ffd700">${s.totalCpu.toFixed(1)}%</b></span>
-            <span>内存: <b style="color:#00d4aa">${s.totalMemMB.toFixed(0)} MB</b></span>
-          </div>
-        </div>`;
-    }
-    html += '</div>';
-  }
-
-  // Process table
-  html += `
-    <div style="background:#1a1a2e;border:1px solid #2a2a4a;border-radius:12px;overflow:hidden">
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead>
-          <tr style="background:#12121f;border-bottom:1px solid #2a2a4a">
-            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500;width:30px"></th>
-            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">工具</th>
-            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">状态</th>
-            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">当前任务</th>
-            <th style="padding:8px 10px;text-align:right;color:#888;font-weight:500">PID</th>
-            <th style="padding:8px 10px;text-align:right;color:#888;font-weight:500">CPU</th>
-            <th style="padding:8px 10px;text-align:right;color:#888;font-weight:500">MEM</th>
-            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">Context</th>
-            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">运行时间</th>
-            <th style="padding:8px 10px;text-align:left;color:#888;font-weight:500">项目</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-
-  // Sort: working/thinking first, then by CPU desc
-  const statusOrder = { working: 0, thinking: 1, pending: 2, idle: 3, done: 4, error: 5, unknown: 6 };
-  const sorted = [...processes].sort((a, b) => {
-    const sa = statusOrder[(a.session && a.session.status) || 'unknown'] ?? 9;
-    const sb = statusOrder[(b.session && b.session.status) || 'unknown'] ?? 9;
-    if (sa !== sb) return sa - sb;
-    return b.cpuPercent - a.cpuPercent;
-  });
-
-  for (const p of sorted) {
-    const s = p.session || {};
-    const status = s.status || 'unknown';
-    const cpuColor = p.cpuPercent > 50 ? '#ff6b6b' : (p.cpuPercent > 10 ? '#ffd700' : '#e0e0e0');
-    const memColor = p.memPercent > 10 ? '#ff6b6b' : (p.memPercent > 3 ? '#ffd700' : '#e0e0e0');
-    const toolBadge = `<span class="svc-type-badge ${p.tool === 'QoderCLI' ? 'type-pm2' : (p.tool === 'Claude Code' ? 'type-launchagent' : 'type-standalone')}">${escapeHtml(p.tool)}</span>`;
-    const statusBadge = `<span class="session-status session-${status}"><span class="session-dot"></span>${statusLabels[status] || status}</span>`;
-
-    // Current task: question + current tool
-    let taskHtml = '-';
-    if (s.question) {
-      taskHtml = `<span class="qa-preview"><span class="qa-label">Q:</span>${escapeHtml(s.question.substring(0, 50))}</span>`;
-    }
-    if (s.currentTool) {
-      taskHtml += `<span style="color:#f97316;font-size:10px;margin-left:6px">🔧${escapeHtml(s.currentTool)}</span>`;
-    }
-
-    // Context bar
-    const ctx = s.contextPercent || 0;
-    const ctxClass = ctx < 50 ? 'context-low' : (ctx < 80 ? 'context-mid' : 'context-high');
-    const ctxHtml = ctx > 0
-      ? `<div style="font-size:10px;color:#888">${ctx}%</div><div class="context-bar"><div class="context-bar-fill ${ctxClass}" style="width:${Math.min(ctx, 100)}%"></div></div>`
-      : '<span style="color:#444;font-size:11px">-</span>';
-
-    // Expandable row ID
-    const rowId = `aicli-detail-${p.pid}`;
-
-    html += `
-      <tr style="border-bottom:1px solid #1f1f35;cursor:pointer" onclick="toggleAiCliRow('${rowId}')" title="${escapeHtml(p.cwd || p.cmdline)}">
-        <td style="padding:8px 6px;text-align:center;color:#555;font-size:10px">▸</td>
-        <td style="padding:8px 10px">${toolBadge}${p.version ? `<span style="color:#666;font-size:10px;margin-left:4px">v${escapeHtml(p.version)}</span>` : ''}</td>
-        <td style="padding:8px 10px">${statusBadge}</td>
-        <td style="padding:8px 10px">${taskHtml}</td>
-        <td style="padding:8px 10px;text-align:right;font-family:'SF Mono',Monaco,monospace;font-size:12px">${p.pid}</td>
-        <td style="padding:8px 10px;text-align:right;color:${cpuColor};font-weight:600">${p.cpuPercent}%</td>
-        <td style="padding:8px 10px;text-align:right;color:${memColor}">${p.memMB}MB</td>
-        <td style="padding:8px 10px;min-width:70px">${ctxHtml}</td>
-        <td style="padding:8px 10px;color:#888;font-size:12px">${escapeHtml(p.elapsedHuman)}</td>
-        <td style="padding:8px 10px;color:#00a8e8;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(p.project || '-')}</td>
-      </tr>
-      <tr class="row-detail" id="${rowId}">
-        <td colspan="10" style="padding:0">
-          <div style="padding:14px 18px;background:#0f0f1a">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-              <!-- System Info -->
-              <div>
-                <div style="color:#888;font-size:10px;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">系统信息</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px">
-                  <div><span style="color:#555">PID:</span> <span style="color:#e0e0e0;font-family:'SF Mono',Monaco,monospace">${p.pid}</span></div>
-                  ${p.parentPid ? `<div><span style="color:#555">父进程:</span> <span style="color:#e0e0e0;font-family:'SF Mono',Monaco,monospace">${p.parentPid}${p.parentName ? ' (' + escapeHtml(p.parentName) + ')' : ''}</span></div>` : ''}
-                  ${p.processStatus ? `<div><span style="color:#555">进程状态:</span> <span style="color:#e0e0e0">${escapeHtml(p.processStatus)}</span></div>` : ''}
-                  ${p.startTime ? `<div><span style="color:#555">启动时间:</span> <span style="color:#e0e0e0">${escapeHtml(p.startTime)}</span></div>` : ''}
-                  ${p.threads ? `<div><span style="color:#555">线程:</span> <span style="color:#e0e0e0">${p.threads}</span></div>` : ''}
-                  ${p.numFds ? `<div><span style="color:#555">文件描述符:</span> <span style="color:#e0e0e0">${p.numFds}</span></div>` : ''}
-                  ${p.numConnections ? `<div><span style="color:#555">网络连接:</span> <span style="color:#e0e0e0">${p.numConnections}</span></div>` : ''}
-                  ${p.vmemMB ? `<div><span style="color:#555">虚拟内存:</span> <span style="color:#e0e0e0">${p.vmemMB > 1024 ? (p.vmemMB / 1024).toFixed(1) + ' GB' : p.vmemMB.toFixed(0) + ' MB'}</span></div>` : ''}
-                  ${p.ioReadBytes || p.ioWriteBytes ? `<div><span style="color:#555">I/O:</span> <span style="color:#e0e0e0">R ${formatBytes(p.ioReadBytes)} / W ${formatBytes(p.ioWriteBytes)}</span></div>` : ''}
-                  <div><span style="color:#555">CWD:</span> <span style="color:#00a8e8;font-family:'SF Mono',Monaco,monospace;font-size:11px;word-break:break-all">${escapeHtml(p.cwd || '-')}</span></div>
-                </div>
-              </div>
-              <!-- Session Info -->
-              <div>
-                <div style="color:#888;font-size:10px;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">会话信息</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px">
-                  <div><span style="color:#555">状态:</span> ${statusBadge}</div>
-                  ${s.currentTool ? `<div><span style="color:#555">当前工具:</span> <span style="color:#f97316;font-weight:600">${escapeHtml(s.currentTool)}</span></div>` : ''}
-                  ${s.messageCount ? `<div><span style="color:#555">消息数:</span> <span style="color:#e0e0e0">${s.messageCount}</span></div>` : ''}
-                  ${ctx > 0 ? `<div><span style="color:#555">Context:</span> <span style="color:#e0e0e0">${ctx}%</span> <div class="context-bar" style="display:inline-block;width:60px;vertical-align:middle"><div class="context-bar-fill ${ctxClass}" style="width:${Math.min(ctx, 100)}%"></div></div></div>` : ''}
-                  ${s.model ? `<div style="grid-column:span 2"><span style="color:#555">模型:</span> <span style="color:#a855f7">${escapeHtml(s.model)}</span></div>` : ''}
-                  ${s.inputTokens ? `<div><span style="color:#555">输入 Token:</span> <span style="color:#00d4aa">${s.inputTokens.toLocaleString()}</span></div>` : ''}
-                  ${s.outputTokens ? `<div><span style="color:#555">输出 Token:</span> <span style="color:#ffd700">${s.outputTokens.toLocaleString()}</span></div>` : ''}
-                  ${s.workspacePath ? `<div style="grid-column:span 2"><span style="color:#555">工作区:</span> <span style="color:#00a8e8">${escapeHtml(s.workspacePath)}</span></div>` : ''}
-                </div>
-              </div>
-            </div>
-            <!-- Q&A -->
-            ${(s.question || s.answer) ? `
-            <div style="margin-top:12px;border-top:1px solid #1f1f35;padding-top:10px">
-              <div style="color:#888;font-size:10px;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">问答</div>
-              <div class="qa-full">
-                ${s.question ? `<div class="qa-block"><div class="qa-block-label">Q</div><div class="qa-block-text">${escapeHtml(s.question)}</div></div>` : ''}
-                ${s.answer ? `<div class="qa-block"><div class="qa-block-label">A</div><div class="qa-block-text">${escapeHtml(s.answer)}</div></div>` : ''}
-              </div>
-            </div>` : ''}
-            <!-- Command line -->
-            ${p.cmdline ? `
-            <div style="margin-top:10px;border-top:1px solid #1f1f35;padding-top:8px">
-              <div style="color:#555;font-size:10px;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">命令行</div>
-              <div style="color:#666;font-family:'SF Mono',Monaco,monospace;font-size:11px;word-break:break-all;line-height:1.5;background:#0a0a14;padding:8px 10px;border-radius:6px">${escapeHtml(p.cmdline)}</div>
-            </div>` : ''}
-          </div>
-        </td>
-      </tr>`;
-  }
-
-  html += '</tbody></table></div>';
-  container.innerHTML = html;
-}
-
-function toggleAiCliRow(rowId) {
-  const row = document.getElementById(rowId);
-  if (row) row.classList.toggle('show');
-}
-
-// ========== Dashboard Log ==========
-async function loadDashLogs() {
-  const source = document.getElementById('logSourceFilter').value;
-  const type = document.getElementById('logTypeFilter').value;
-  let url = '/api/dashboard-logs?limit=200';
-  if (source) url += `&source=${source}`;
-  if (type) url += `&type=${type}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  renderDashLogs(data);
-  document.getElementById('lastRefreshLogs').textContent =
-    '上次更新: ' + new Date().toLocaleTimeString('zh-CN');
-}
-
-const logSourceLabels = { system: '系统', service: 'PM2服务', 'ext-service': '外部服务', task: '定时任务', 'ai-cli': 'AI CLI' };
-const logTypeColors = { info: '#00d4aa', warn: '#ffd700', error: '#ff6b6b' };
-
-function renderDashLogs(logs) {
-  const container = document.getElementById('dashlogs');
-  if (logs.length === 0) {
-    container.innerHTML = '<div style="color:#666;text-align:center;padding:60px;">暂无日志记录</div>';
-    return;
-  }
-
-  let html = `
-    <div style="background:#1a1a2e;border:1px solid #2a2a4a;border-radius:12px;overflow:hidden">
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead>
-          <tr style="background:#12121f;border-bottom:1px solid #2a2a4a">
-            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;width:160px">时间</th>
-            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;width:70px">类型</th>
-            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;width:90px">来源</th>
-            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500">消息</th>
-            <th style="padding:10px 14px;text-align:left;color:#888;font-weight:500;width:auto">详情</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-
-  for (const l of logs) {
-    const typeColor = logTypeColors[l.type] || '#888';
-    const typeLabel = { info: 'INFO', warn: 'WARN', error: 'ERROR' }[l.type] || l.type.toUpperCase();
-    const srcLabel = logSourceLabels[l.source] || l.source;
-    const timeStr = new Date(l.time).toLocaleString('zh-CN');
-    html += `
-      <tr style="border-bottom:1px solid #1f1f35">
-        <td style="padding:8px 14px;color:#888;font-family:'SF Mono',Monaco,monospace;font-size:11px;white-space:nowrap">${timeStr}</td>
-        <td style="padding:8px 14px"><span style="color:${typeColor};font-weight:600;font-size:11px">${typeLabel}</span></td>
-        <td style="padding:8px 14px"><span style="background:${typeColor}15;color:${typeColor};padding:2px 8px;border-radius:4px;font-size:11px">${srcLabel}</span></td>
-        <td style="padding:8px 14px;color:#e0e0e0">${escapeHtml(l.message)}</td>
-        <td style="padding:8px 14px;color:#666;font-size:11px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(l.detail)}">${escapeHtml(l.detail)}</td>
-      </tr>`;
-  }
-
-  html += '</tbody></table></div>';
-  container.innerHTML = html;
-}
-
-// Init
-loadTasks();
-setInterval(() => {
-  if (currentTab === 'tasks') loadTasks();
-  if (currentTab === 'services') loadServices();
-  if (currentTab === 'aicli') loadAiCli();
-  if (currentTab === 'logs') loadDashLogs();
-}, 30000);
-</script>
+<!-- External JS Modules (order matters) -->
+<script src="/js/state.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/components.js"></script>
+<script src="/js/toast.js"></script>
+<script src="/js/sidebar.js"></script>
+<script src="/js/overview.js"></script>
+<script src="/js/services.js"></script>
+<script src="/js/tasks.js"></script>
+<script src="/js/aicli.js"></script>
+<script src="/js/logs.js"></script>
+<script src="/js/webviews.js"></script>
+<script src="/js/app.js"></script>
+<script src="/js/search.js"></script>
 </body>
 </html>

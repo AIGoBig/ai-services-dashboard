@@ -92,7 +92,8 @@ fi
 echo -e "${YELLOW}[3/7] 创建目录结构...${NC}"
 mkdir -p "$SERVICES_DIR/logs"
 mkdir -p "$SCRIPTS_DIR"
-mkdir -p "$SCHEDULER_DIR/public"
+mkdir -p "$SCHEDULER_DIR/public/css"
+mkdir -p "$SCHEDULER_DIR/public/js"
 mkdir -p "$SCHEDULER_DIR/scripts"
 mkdir -p "$DASHBOARD_APP_DIR"
 # Create per-service dirs for pid files

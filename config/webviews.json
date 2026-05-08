@@ -1,0 +1,18 @@
+[
+  {
+    "id": "auto-git-pr",
+    "name": "Auto Git PR",
+    "url": "http://localhost:8080",
+    "port": 8080,
+    "description": "AI 驱动的开源贡献自动化 Agent",
+    "category": "earn"
+  },
+  {
+    "id": "service-8765",
+    "name": "Service @8765",
+    "url": "http://localhost:8765",
+    "port": 8765,
+    "description": "待确认服务",
+    "category": "monitor"
+  }
+]

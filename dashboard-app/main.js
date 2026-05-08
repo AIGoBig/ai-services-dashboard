@@ -80,8 +80,10 @@ async function createWindow() {
   }
 
   mainWindow = new BrowserWindow({
-    width: 1200, height: 800, minWidth: 800, minHeight: 600,
+    width: 1400, height: 900, minWidth: 800, minHeight: 600,
     title: 'AI Services Dashboard',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 16, y: 18 },
     backgroundColor: '#0f0f23',
     webPreferences: { nodeIntegration: false, contextIsolation: true },
     icon: path.join(__dirname, 'icon.png')

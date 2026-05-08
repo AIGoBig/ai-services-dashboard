@@ -1,0 +1,124 @@
+{
+  "services": [
+    {
+      "id": "scheduler",
+      "name": "Scheduler Dashboard",
+      "manager": "pm2",
+      "category": "core",
+      "description": "AI Services Dashboard 后端 + 定时任务调度",
+      "port": 3777,
+      "healthCheck": {
+        "type": "http",
+        "url": "http://localhost:3777/api/tasks",
+        "timeout": 3000
+      },
+      "webview": {
+        "url": "http://localhost:3777"
+      }
+    },
+    {
+      "id": "cc-connect",
+      "name": "CC Connect",
+      "manager": "pm2",
+      "category": "ai-cli",
+      "description": "Claude Code 连接管理器 / IM 桥接",
+      "healthCheck": {
+        "type": "process",
+        "timeout": 3000
+      }
+    },
+    {
+      "id": "openclaw-gateway",
+      "name": "OpenClaw Gateway",
+      "manager": "pm2",
+      "category": "gateway",
+      "description": "OpenClaw 多 Agent 网关",
+      "port": 18789,
+      "healthCheck": {
+        "type": "http",
+        "url": "http://localhost:18789",
+        "timeout": 3000
+      },
+      "webview": {
+        "url": "http://localhost:18789"
+      },
+      "launchagentLabel": "ai.openclaw.gateway",
+      "note": "PM2 主管理，LaunchAgent 备用启动"
+    },
+    {
+      "id": "xiaohongshu-mcp",
+      "name": "小红书 MCP",
+      "manager": "pm2",
+      "category": "mcp",
+      "description": "小红书内容发布 MCP 服务",
+      "healthCheck": {
+        "type": "process",
+        "timeout": 3000
+      }
+    },
+    {
+      "id": "auto-git-pr",
+      "name": "Auto Git PR",
+      "manager": "launchagent",
+      "category": "earn",
+      "description": "AI 驱动的开源贡献自动化 Agent",
+      "port": 8080,
+      "launchagentLabel": "com.auto-git-pr",
+      "healthCheck": {
+        "type": "http",
+        "url": "http://localhost:8080",
+        "timeout": 3000
+      },
+      "webview": {
+        "url": "http://localhost:8080"
+      },
+      "logPaths": {
+        "stdout": "/Users/king/Library/Mobile Documents/iCloud~md~obsidian/Documents/ImproveMainNote/Documents/I.P.A.R.A/生活领域/项目/AutoEarn/auto_git_pr/logs/launchd.out.log",
+        "stderr": "/Users/king/Library/Mobile Documents/iCloud~md~obsidian/Documents/ImproveMainNote/Documents/I.P.A.R.A/生活领域/项目/AutoEarn/auto_git_pr/logs/launchd.err.log"
+      }
+    },
+    {
+      "id": "tly-v2ray",
+      "name": "龙甲 (TLY)",
+      "manager": "launchagent",
+      "category": "network",
+      "description": "龙甲 VPN 代理 (v2ray)",
+      "port": 1080,
+      "extraPorts": [10871],
+      "launchagentLabel": "yanue.xxxxxxtly.v2ray-core",
+      "healthCheck": {
+        "type": "port",
+        "timeout": 3000
+      },
+      "logPaths": {
+        "stdout": "/Users/king/Library/Logs/v2ray-core.log",
+        "stderr": "/Users/king/Library/Logs/v2ray-core.log"
+      }
+    },
+    {
+      "id": "openclaw-monitor",
+      "name": "OpenClaw Monitor",
+      "manager": "launchagent",
+      "category": "monitor",
+      "description": "OpenClaw 状态监控脚本 (每小时运行)",
+      "launchagentLabel": "ai.openclaw.monitor",
+      "healthCheck": {
+        "type": "launchagent",
+        "timeout": 3000
+      },
+      "logPaths": {
+        "stdout": "/tmp/openclaw_monitor_launchd.log",
+        "stderr": "/tmp/openclaw_monitor_launchd.err"
+      }
+    }
+  ],
+  "categories": {
+    "core": { "label": "核心服务", "color": "#00d4aa" },
+    "ai-cli": { "label": "AI CLI", "color": "#a855f7" },
+    "gateway": { "label": "网关", "color": "#00a8e8" },
+    "mcp": { "label": "MCP 服务", "color": "#f59e0b" },
+    "earn": { "label": "收益", "color": "#f59e0b" },
+    "network": { "label": "网络", "color": "#3b82f6" },
+    "monitor": { "label": "监控", "color": "#6b7280" }
+  }
+}

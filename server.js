@@ -2,6 +2,7 @@ const express = require('express');
 const schedule = require('node-schedule');
 const { exec } = require('child_process');
 const net = require('net');
+const http = require('http');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -21,7 +22,6 @@ function buildPath() {
   const paths = [npmGlobal];
   if (brewPrefix) {
     paths.push(`${brewPrefix}/bin`);
-    // Find Homebrew Python versioned libexec paths (has psutil)
     try {
       const optDir = `${brewPrefix}/opt`;
       for (const e of fs.readdirSync(optDir)) {
@@ -37,29 +37,123 @@ function buildPath() {
 }
 const SYSTEM_PATH = buildPath();
 
-// Service port mapping: load from config file, fallback to defaults
+// === Async File Reads with Cache ===
+const fileCache = new Map();
+async function readJSONCached(filePath, ttlMs = 10000) {
+  const now = Date.now();
+  const cached = fileCache.get(filePath);
+  if (cached && (now - cached.time) < ttlMs) return cached.data;
+  const content = await fs.promises.readFile(filePath, 'utf8');
+  const data = JSON.parse(content);
+  fileCache.set(filePath, { data, time: now });
+  return data;
+}
+
+// === Unified service registry ===
+const UNIFIED_SERVICES_FILE = path.join(__dirname, 'services.json');
+let serviceRegistry = { services: [], categories: {} };
+let registryInitialized = false;
+
+async function loadServiceRegistry() {
+  try {
+    if (fs.existsSync(UNIFIED_SERVICES_FILE)) {
+      const data = await readJSONCached(UNIFIED_SERVICES_FILE);
+      if (registryInitialized) {
+        const prev = serviceRegistry;
+        if (JSON.stringify(prev.services) !== JSON.stringify(data.services)) {
+          broadcast('config-reload', { source: 'services.json' });
+          addLog('info', 'system', '配置热更新: services.json 已变更');
+        }
+      }
+      serviceRegistry = data;
+      registryInitialized = true;
+    }
+  } catch (_) {}
+  return serviceRegistry;
+}
+
+// Legacy config loading (kept for backward compat)
 const DEFAULT_PORTS = { scheduler: 3777, gemini: 52019, 'xiaohongshu-mcp': 18060, 'openclaw-gateway': 18789, 'agent-browser': 54247 };
 const PORTS_FILE = path.join(__dirname, 'service-ports.json');
+const EXT_SERVICES_FILE = path.join(__dirname, 'external-services.json');
+const WEBVIEWS_FILE = path.join(__dirname, 'config', 'webviews.json');
+
+// Initial sync loads for startup
 const SERVICE_PORTS = fs.existsSync(PORTS_FILE)
   ? { ...DEFAULT_PORTS, ...JSON.parse(fs.readFileSync(PORTS_FILE, 'utf8')) }
   : DEFAULT_PORTS;
-
-// External services: non-pm2 services (LaunchAgent, standalone, etc.)
-const EXT_SERVICES_FILE = path.join(__dirname, 'external-services.json');
 const externalServiceDefs = fs.existsSync(EXT_SERVICES_FILE)
   ? JSON.parse(fs.readFileSync(EXT_SERVICES_FILE, 'utf8'))
   : [];
+const webViewDefs = fs.existsSync(WEBVIEWS_FILE)
+  ? JSON.parse(fs.readFileSync(WEBVIEWS_FILE, 'utf8'))
+  : [];
+
+// Async loaders for hot paths
+async function loadExternalServices() {
+  try {
+    if (fs.existsSync(EXT_SERVICES_FILE)) return await readJSONCached(EXT_SERVICES_FILE);
+  } catch (_) {}
+  return externalServiceDefs;
+}
+
+async function loadWebviewsConfig() {
+  try {
+    if (fs.existsSync(WEBVIEWS_FILE)) return await readJSONCached(WEBVIEWS_FILE);
+  } catch (_) {}
+  return webViewDefs;
+}
+
+async function loadServicePorts() {
+  try {
+    if (fs.existsSync(PORTS_FILE)) {
+      const ports = await readJSONCached(PORTS_FILE);
+      return { ...DEFAULT_PORTS, ...ports };
+    }
+  } catch (_) {}
+  return SERVICE_PORTS;
+}
 
 if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
+
+// === SSE Infrastructure ===
+const sseClients = new Set();
+
+function broadcast(eventType, data) {
+  const msg = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const client of sseClients) {
+    try { client.write(msg); } catch (_) { sseClients.delete(client); }
+  }
+}
 
 // === Dashboard Event Log ===
 const dashLog = [];
 const DASH_LOG_MAX = 300;
+const DASH_LOG_FILE = path.join(LOGS_DIR, 'dashboard-events.jsonl');
+
 function addLog(type, source, message, detail) {
-  dashLog.unshift({ time: new Date().toISOString(), type, source, message, detail: detail || '' });
+  const entry = { time: new Date().toISOString(), type, source, message, detail: detail || '' };
+  dashLog.unshift(entry);
   if (dashLog.length > DASH_LOG_MAX) dashLog.length = DASH_LOG_MAX;
+  fs.promises.appendFile(DASH_LOG_FILE, JSON.stringify(entry) + '\n').catch(() => {});
+  broadcast('log-entry', entry);
 }
+
+function loadPersistedLogs() {
+  try {
+    if (!fs.existsSync(DASH_LOG_FILE)) return;
+    const lines = fs.readFileSync(DASH_LOG_FILE, 'utf8').trim().split('\n').slice(-DASH_LOG_MAX);
+    for (const line of lines.reverse()) {
+      try { dashLog.push(JSON.parse(line)); } catch (_) {}
+    }
+  } catch (_) {}
+}
+
+loadPersistedLogs();
 addLog('info', 'system', 'Dashboard 服务启动', `端口 ${PORT}`);
+
+// Initialize service registry asynchronously
+loadServiceRegistry().catch(() => {});
 
 const defaultTasks = [
   {
@@ -82,6 +176,7 @@ function loadTasks() {
 
 function saveTasks(tasks) {
   fs.writeFileSync(TASKS_FILE, JSON.stringify(tasks, null, 2));
+  fileCache.delete(TASKS_FILE);
 }
 
 const tasks = loadTasks();
@@ -116,6 +211,7 @@ function runTask(taskId, manual = false) {
     logStream.end();
     addLog(code === 0 ? 'info' : 'error', 'task',
       `${prefix} ${task.name} ${code === 0 ? '成功' : '失败'}`, `退出码: ${code}`);
+    broadcast('task-complete', { id: taskId, name: task.name, status: entry.status, exitCode: code });
   });
 }
 
@@ -128,6 +224,7 @@ function scheduleTask(task) {
 
 tasks.forEach(scheduleTask);
 
+// === Health check functions ===
 function checkPort(host, port, timeout = 3000) {
   return new Promise((resolve) => {
     const socket = new net.Socket();
@@ -136,6 +233,17 @@ function checkPort(host, port, timeout = 3000) {
     socket.on('timeout', () => { socket.destroy(); resolve(false); });
     socket.on('error', () => { resolve(false); });
     socket.connect(port, host);
+  });
+}
+
+function checkHttp(url, timeout = 3000) {
+  return new Promise((resolve) => {
+    const req = http.get(url, { timeout }, (res) => {
+      resolve(res.statusCode >= 200 && res.statusCode < 400);
+      res.resume();
+    });
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.on('error', () => { resolve(false); });
   });
 }
 
@@ -149,8 +257,177 @@ function pm2Exec(cmd) {
   });
 }
 
+function getLaunchAgentStatus(label) {
+  return new Promise((resolve) => {
+    exec(`launchctl list ${label} 2>/dev/null`, { env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout) => {
+      if (err) return resolve({ running: false, pid: null, exitStatus: null });
+      const pidMatch = stdout.match(/"PID"\s*=\s*(\d+)/);
+      const statusMatch = stdout.match(/"LastExitStatus"\s*=\s*(\d+)/);
+      resolve({
+        running: !!pidMatch,
+        pid: pidMatch ? parseInt(pidMatch[1]) : null,
+        exitStatus: statusMatch ? parseInt(statusMatch[1]) : null
+      });
+    });
+  });
+}
+
+function getProcessInfo(pid) {
+  return new Promise((resolve) => {
+    if (!pid) return resolve({ command: '', memory: 0, cpu: 0 });
+    exec(`ps -p ${pid} -o rss=,pcpu=,command= 2>/dev/null`, (err, stdout) => {
+      if (err || !stdout.trim()) return resolve({ command: '', memory: 0, cpu: 0 });
+      const parts = stdout.trim().split(/\s+/);
+      const rss = parseInt(parts[0]) || 0;
+      const cpu = parseFloat(parts[1]) || 0;
+      const command = parts.slice(2).join(' ');
+      resolve({ command, memory: rss * 1024, cpu });
+    });
+  });
+}
+
+// === Build unified service status ===
+async function buildUnifiedServices() {
+  const registry = await loadServiceRegistry();
+  const defs = registry.services || [];
+  const categories = registry.categories || {};
+  const results = [];
+
+  // Get PM2 status in one call
+  let pm2Map = {};
+  try {
+    const stdout = await pm2Exec('jlist');
+    const list = JSON.parse(stdout);
+    for (const p of list) pm2Map[p.name] = p;
+  } catch (_) {}
+
+  for (const svc of defs) {
+    const info = {
+      ...svc,
+      status: 'unknown',
+      healthy: false,
+      pid: null,
+      cpu: 0,
+      memory: 0,
+      uptime: null,
+      restarts: 0,
+      webviewHealthy: false
+    };
+
+    // PM2 managed
+    if (svc.manager === 'pm2') {
+      const p = pm2Map[svc.id];
+      if (p) {
+        info.status = p.pm2_env.status;
+        info.pid = p.pid;
+        info.cpu = p.monit ? p.monit.cpu : 0;
+        info.memory = p.monit ? p.monit.memory : 0;
+        info.uptime = p.pm2_env.pm_uptime;
+        info.restarts = p.pm2_env.restart_time;
+      } else {
+        info.status = 'stopped';
+      }
+    }
+
+    // LaunchAgent managed
+    if (svc.manager === 'launchagent' && svc.launchagentLabel) {
+      const laStatus = await getLaunchAgentStatus(svc.launchagentLabel);
+      info.running = laStatus.running;
+      info.pid = laStatus.pid;
+      info.status = laStatus.running ? 'online' : 'stopped';
+      if (laStatus.pid) {
+        const procInfo = await getProcessInfo(laStatus.pid);
+        info.cpu = procInfo.cpu;
+        info.memory = procInfo.memory;
+        info.command = procInfo.command;
+      }
+    }
+
+    // Health checks
+    if (svc.healthCheck) {
+      const hc = svc.healthCheck;
+      if (hc.type === 'http' && hc.url) {
+        info.healthy = await checkHttp(hc.url, hc.timeout || 3000);
+      } else if (hc.type === 'port' && svc.port) {
+        info.healthy = await checkPort('localhost', svc.port, hc.timeout || 3000);
+      } else if (hc.type === 'process') {
+        info.healthy = info.status === 'online';
+      } else if (hc.type === 'launchagent') {
+        info.healthy = info.status === 'online';
+      }
+    } else if (svc.port) {
+      // Fallback: port check if no healthCheck defined
+      info.healthy = await checkPort('localhost', svc.port);
+    }
+
+    // Webview health
+    if (svc.webview && svc.webview.url) {
+      try {
+        const wvUrl = new URL(svc.webview.url);
+        const wvPort = parseInt(wvUrl.port);
+        if (wvPort) info.webviewHealthy = await checkPort('localhost', wvPort);
+      } catch (_) {}
+    }
+
+    // Extra ports
+    if (svc.extraPorts && svc.extraPorts.length > 0) {
+      info.extraPortStatus = {};
+      for (const ep of svc.extraPorts) {
+        info.extraPortStatus[ep] = await checkPort('localhost', ep);
+      }
+    }
+
+    results.push(info);
+  }
+
+  return { services: results, categories };
+}
+
+// === Lightweight Rate Limiting ===
+const rateLimitMap = new Map();
+function rateLimit(maxRequests = 60, windowMs = 60000) {
+  return (req, res, next) => {
+    const key = req.ip;
+    const now = Date.now();
+    const record = rateLimitMap.get(key) || { count: 0, start: now };
+    if (now - record.start > windowMs) { record.count = 0; record.start = now; }
+    record.count++;
+    rateLimitMap.set(key, record);
+    if (record.count > maxRequests) return res.status(429).json({ error: 'Too many requests' });
+    next();
+  };
+}
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/api/', rateLimit());
+
+// === Request Validation Middleware ===
+function validateBody(schema) {
+  return (req, res, next) => {
+    const errors = [];
+    for (const [field, rules] of Object.entries(schema)) {
+      const val = req.body[field];
+      if (rules.required && (val === undefined || val === null)) errors.push(`${field} is required`);
+      if (rules.enum && val && !rules.enum.includes(val)) errors.push(`${field} must be one of: ${rules.enum.join(', ')}`);
+    }
+    if (errors.length) return res.status(400).json({ error: errors.join('; ') });
+    next();
+  };
+}
+
+// === SSE Endpoint ===
+app.get('/api/events', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`);
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+});
 
 // === Task APIs ===
 app.get('/api/tasks', (req, res) => {
@@ -163,21 +440,23 @@ app.get('/api/tasks', (req, res) => {
   res.json(result);
 });
 
-app.post('/api/tasks/:id/run', (req, res) => {
+app.post('/api/tasks/:id/run', validateBody({}), (req, res) => {
   const task = tasks.find(t => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: 'Task not found' });
   addLog('info', 'task', `手动执行: ${task.name}`);
   runTask(task.id, true);
+  broadcast('task-run', { id: task.id, name: task.name });
   res.json({ message: 'Task started', id: task.id });
 });
 
-app.post('/api/tasks/:id/toggle', (req, res) => {
+app.post('/api/tasks/:id/toggle', validateBody({}), (req, res) => {
   const task = tasks.find(t => t.id === req.params.id);
   if (!task) return res.status(404).json({ error: 'Task not found' });
   task.enabled = !task.enabled;
   saveTasks(tasks);
   scheduleTask(task);
   addLog('info', 'task', `${task.name} ${task.enabled ? '已启用' : '已暂停'}`);
+  broadcast('task-toggle', { id: task.id, name: task.name, enabled: task.enabled });
   res.json({ enabled: task.enabled });
 });
 
@@ -193,7 +472,129 @@ app.get('/api/tasks/:id/history', (req, res) => {
   res.json(history.map(h => ({ time: h.time, type: h.type, status: h.status, exitCode: h.exitCode })));
 });
 
-// === Service APIs ===
+// === Unified Service APIs ===
+app.get('/api/overview', async (req, res) => {
+  try {
+    const { services, categories } = await buildUnifiedServices();
+    const summary = {
+      total: services.length,
+      online: services.filter(s => s.status === 'online').length,
+      offline: services.filter(s => s.status === 'stopped' || s.status === 'waiting restart').length,
+      unhealthy: services.filter(s => s.status === 'online' && !s.healthy).length,
+      byCategory: {},
+      issues: services
+        .filter(s => s.status !== 'online' || !s.healthy)
+        .map(s => ({ id: s.id, name: s.name, status: s.status, healthy: s.healthy, category: s.category, manager: s.manager }))
+    };
+    for (const s of services) {
+      const cat = s.category || 'other';
+      if (!summary.byCategory[cat]) summary.byCategory[cat] = { total: 0, online: 0, label: (categories[cat] || {}).label || cat, color: (categories[cat] || {}).color || '#888' };
+      summary.byCategory[cat].total++;
+      if (s.status === 'online') summary.byCategory[cat].online++;
+    }
+    res.json(summary);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/unified-services', async (req, res) => {
+  try {
+    const result = await buildUnifiedServices();
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/unified-services/:id/action', validateBody({ action: { required: true, enum: ['start', 'stop', 'restart'] } }), async (req, res) => {
+  const registry = await loadServiceRegistry();
+  const svc = registry.services.find(s => s.id === req.params.id);
+  if (!svc) return res.status(404).json({ error: 'Service not found' });
+  const action = req.body.action;
+  try {
+    if (svc.manager === 'pm2') {
+      const pm2Action = action === 'restart' ? 'restart' : action;
+      await pm2Exec(`${pm2Action} ${svc.id}`);
+    } else if (svc.manager === 'launchagent' && svc.launchagentLabel) {
+      if (action === 'restart') {
+        // Unload then load
+        const plistPath = path.join(HOME, `Library/LaunchAgents/${svc.launchagentLabel}.plist`);
+        exec(`launchctl unload ${plistPath} 2>&1`, { env: { ...process.env, PATH: SYSTEM_PATH } });
+        await new Promise(r => setTimeout(r, 1000));
+        exec(`launchctl load ${plistPath} 2>&1`, { env: { ...process.env, PATH: SYSTEM_PATH } });
+      } else {
+        const laAction = action === 'start' ? 'load' : 'unload';
+        const plistPath = path.join(HOME, `Library/LaunchAgents/${svc.launchagentLabel}.plist`);
+        exec(`launchctl ${laAction} ${plistPath} 2>&1`, { env: { ...process.env, PATH: SYSTEM_PATH } });
+      }
+    }
+    addLog('info', 'service', `${action}: ${svc.name}`);
+    broadcast('service-action', { id: svc.id, name: svc.name, action });
+    res.json({ message: `${action}ed ${svc.name}`, id: svc.id });
+  } catch (e) {
+    addLog('error', 'service', `${action} 失败: ${svc.name}`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/unified-services/:id/logs', async (req, res) => {
+  const registry = await loadServiceRegistry();
+  const svc = registry.services.find(s => s.id === req.params.id);
+  if (!svc) return res.status(404).json({ error: 'Service not found' });
+  const type = req.query.type || 'out';
+  const lines = parseInt(req.query.lines) || 100;
+
+  if (svc.manager === 'pm2') {
+    const logPath = path.join(SERVICES_DIR, `${svc.id}-${type}.log`);
+    if (!fs.existsSync(logPath)) return res.json({ logs: '', exists: false });
+    const content = fs.readFileSync(logPath, 'utf8');
+    const allLines = content.split('\n');
+    return res.json({ logs: allLines.slice(-lines).join('\n'), exists: true, totalLines: allLines.length });
+  } else if (svc.logPaths) {
+    const logPath = type === 'err' ? svc.logPaths.stderr : svc.logPaths.stdout;
+    if (!logPath || !fs.existsSync(logPath)) return res.json({ logs: '', exists: false, path: logPath });
+    const content = fs.readFileSync(logPath, 'utf8');
+    const allLines = content.split('\n');
+    return res.json({ logs: allLines.slice(-lines).join('\n'), exists: true, totalLines: allLines.length, path: logPath });
+  }
+  res.json({ logs: '', exists: false });
+});
+
+app.get('/api/unified-services/:id/details', async (req, res) => {
+  const registry = await loadServiceRegistry();
+  const svc = registry.services.find(s => s.id === req.params.id);
+  if (!svc) return res.status(404).json({ error: 'Service not found' });
+
+  const details = { ...svc, pid: null, status: 'unknown' };
+
+  if (svc.manager === 'pm2') {
+    try {
+      const stdout = await pm2Exec('jlist');
+      const list = JSON.parse(stdout);
+      const d = list.find(p => p.name === svc.id);
+      if (d) {
+        const env = d.pm2_env || {};
+        details.pid = d.pid;
+        details.status = env.status;
+        details.uptime = env.pm_uptime;
+        details.restarts = env.restart_time;
+        details.createdAt = env.created_at;
+        details.execPath = env.pm_exec_path;
+        details.cwd = env.pm_cwd;
+        details.nodeVersion = env.node_version;
+        details.outLogPath = env.pm_out_log_path;
+        details.errLogPath = env.pm_err_log_path;
+      }
+    } catch (_) {}
+  } else if (svc.manager === 'launchagent' && svc.launchagentLabel) {
+    const laStatus = await getLaunchAgentStatus(svc.launchagentLabel);
+    details.running = laStatus.running;
+    details.pid = laStatus.pid;
+    details.status = laStatus.running ? 'online' : 'stopped';
+    details.exitStatus = laStatus.exitStatus;
+  }
+
+  res.json(details);
+});
+
+// === Legacy Service APIs (backward compat) ===
 app.get('/api/services', (req, res) => {
   const pm2Path = process.env.PM2_PATH || 'pm2';
   exec(`${pm2Path} jlist`, { env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout) => {
@@ -258,54 +659,20 @@ app.post('/api/services/:name/delete', async (req, res) => {
 });
 
 app.get('/api/health', async (req, res) => {
+  const ports = await loadServicePorts();
   const results = {};
-  for (const [name, port] of Object.entries(SERVICE_PORTS)) {
+  for (const [name, port] of Object.entries(ports)) {
     results[name] = { port, healthy: await checkPort('localhost', port) };
   }
   res.json(results);
 });
 
-// === External Services APIs (non-pm2: LaunchAgent, standalone) ===
-function getLaunchAgentStatus(label) {
-  return new Promise((resolve) => {
-    exec(`launchctl list ${label} 2>/dev/null`, { env: { ...process.env, PATH: SYSTEM_PATH } }, (err, stdout) => {
-      if (err) return resolve({ running: false, pid: null, exitStatus: null });
-      const pidMatch = stdout.match(/"PID"\s*=\s*(\d+)/);
-      const statusMatch = stdout.match(/"LastExitStatus"\s*=\s*(\d+)/);
-      resolve({
-        running: !!pidMatch,
-        pid: pidMatch ? parseInt(pidMatch[1]) : null,
-        exitStatus: statusMatch ? parseInt(statusMatch[1]) : null
-      });
-    });
-  });
-}
-
-function getProcessInfo(pid) {
-  return new Promise((resolve) => {
-    if (!pid) return resolve({ command: '', memory: 0, cpu: 0 });
-    exec(`ps -p ${pid} -o rss=,pcpu=,command= 2>/dev/null`, (err, stdout) => {
-      if (err || !stdout.trim()) return resolve({ command: '', memory: 0, cpu: 0 });
-      const parts = stdout.trim().split(/\s+/);
-      const rss = parseInt(parts[0]) || 0;
-      const cpu = parseFloat(parts[1]) || 0;
-      const command = parts.slice(2).join(' ');
-      resolve({ command, memory: rss * 1024, cpu });
-    });
-  });
-}
-
 app.get('/api/external-services', async (req, res) => {
+  const svcDefs = await loadExternalServices();
   const results = [];
-  for (const svc of externalServiceDefs) {
+  for (const svc of svcDefs) {
     const info = { ...svc, healthy: false, running: false, pid: null, memory: 0, cpu: 0, command: '' };
-
-    // Check port health
-    if (svc.port) {
-      info.healthy = await checkPort('localhost', svc.port);
-    }
-
-    // Check LaunchAgent status
+    if (svc.port) info.healthy = await checkPort('localhost', svc.port);
     if (svc.type === 'launchagent' && svc.launchagentLabel) {
       const laStatus = await getLaunchAgentStatus(svc.launchagentLabel);
       info.running = laStatus.running;
@@ -317,27 +684,23 @@ app.get('/api/external-services', async (req, res) => {
         info.command = procInfo.command;
       }
     }
-
-    // Check extra ports
     if (svc.extraPorts && svc.extraPorts.length > 0) {
       info.extraPortStatus = {};
-      for (const ep of svc.extraPorts) {
-        info.extraPortStatus[ep] = await checkPort('localhost', ep);
-      }
+      for (const ep of svc.extraPorts) info.extraPortStatus[ep] = await checkPort('localhost', ep);
     }
-
     results.push(info);
   }
   res.json(results);
 });
 
 app.post('/api/external-services/:id/toggle', async (req, res) => {
-  const svc = externalServiceDefs.find(s => s.id === req.params.id);
+  const svcDefs = await loadExternalServices();
+  const svc = svcDefs.find(s => s.id === req.params.id);
   if (!svc) return res.status(404).json({ error: 'External service not found' });
   if (svc.type !== 'launchagent' || !svc.launchagentLabel) {
     return res.status(400).json({ error: 'Only LaunchAgent services can be toggled' });
   }
-  const action = req.body.action; // 'load' or 'unload'
+  const action = req.body.action;
   if (!['load', 'unload'].includes(action)) {
     return res.status(400).json({ error: 'Action must be "load" or "unload"' });
   }
@@ -347,6 +710,17 @@ app.post('/api/external-services/:id/toggle', async (req, res) => {
     addLog(action === 'load' ? 'info' : 'warn', 'ext-service', `${action === 'load' ? '启动' : '停止'}: ${svc.name}`);
     res.json({ message: `${action}ed ${svc.name}`, id: svc.id });
   });
+});
+
+app.get('/api/webviews', async (req, res) => {
+  const wvDefs = await loadWebviewsConfig();
+  const results = [];
+  for (const view of wvDefs) {
+    const info = { ...view, healthy: false };
+    if (view.port) info.healthy = await checkPort('localhost', view.port);
+    results.push(info);
+  }
+  res.json(results);
 });
 
 // === AI CLI Process Monitor ===
@@ -363,7 +737,6 @@ app.get('/api/ai-cli-processes', (req, res) => {
     }
     try {
       const processes = JSON.parse(stdout);
-      // Summary stats
       const byTool = {};
       for (const p of processes) {
         if (!byTool[p.tool]) byTool[p.tool] = { count: 0, totalCpu: 0, totalMemMB: 0 };
@@ -390,6 +763,40 @@ app.get('/api/dashboard-logs', (req, res) => {
   res.json(logs.slice(0, limit));
 });
 
-app.listen(PORT, () => {
+// === Error Handling Middleware ===
+app.use((err, req, res, next) => {
+  console.error(`[ERROR] ${req.method} ${req.path}:`, err.message);
+  addLog('error', 'system', `请求错误: ${req.method} ${req.path}`, err.message);
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error', path: req.path });
+});
+
+// === Periodic Status Broadcast (every 30s, only if something changed) ===
+let lastBroadcastStatus = null;
+setInterval(async () => {
+  try {
+    const { services } = await buildUnifiedServices();
+    const statusSig = services.map(s => `${s.id}:${s.status}:${s.healthy}`).join(',');
+    if (statusSig !== lastBroadcastStatus) {
+      lastBroadcastStatus = statusSig;
+      broadcast('status-change', { services: services.map(s => ({ id: s.id, status: s.status, healthy: s.healthy })) });
+    }
+  } catch (_) {}
+}, 30000);
+
+// === Server Start & Graceful Shutdown ===
+const server = app.listen(PORT, () => {
   console.log(`AI Services Dashboard running at http://localhost:${PORT}`);
 });
+
+function gracefulShutdown(signal) {
+  console.log(`\nReceived ${signal}, shutting down gracefully...`);
+  for (const client of sseClients) client.end();
+  sseClients.clear();
+  server.close(() => {
+    for (const job of Object.values(scheduledJobs)) { if (job && job.cancel) job.cancel(); }
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

@@ -1,0 +1,187 @@
+/* ============================================================
+   AI Services Dashboard — Design Tokens
+   Aesthetic: Mission Control / Refined Operational Darkness
+   ============================================================ */
+
+:root {
+  /* ── Surface Colors ────────────────────────────────────── */
+  --color-bg-void:       #080810;
+  --color-bg-primary:    #0f0f23;
+  --color-bg-secondary:  #1a1a2e;
+  --color-bg-tertiary:   #12121f;
+  --color-bg-elevated:   #0d0d1a;
+  --color-bg-recessed:   #0a0a14;
+  --color-bg-hover:      #1e1e36;
+
+  /* ── Border Colors ─────────────────────────────────────── */
+  --color-border-default:  #2a2a4a;
+  --color-border-subtle:   #1f1f35;
+  --color-border-hover:    #3a3a6a;
+  --color-border-active:   #4a4a7a;
+  --color-border-danger:   #ff6b6b40;
+
+  /* ── Text Colors ───────────────────────────────────────── */
+  --color-text-primary:    #e0e0e0;
+  --color-text-secondary:  #888;
+  --color-text-muted:      #666;
+  --color-text-faint:      #555;
+  --color-text-ghost:      #444;
+  --color-text-inverse:    #0f0f23;
+
+  /* ── Status Colors ─────────────────────────────────────── */
+  --color-status-online:   #00d4aa;
+  --color-status-offline:  #ff6b6b;
+  --color-status-warning:  #ffd700;
+  --color-status-info:     #00a8e8;
+  --color-status-purple:   #a855f7;
+  --color-status-orange:   #f97316;
+  --color-status-amber:    #f59e0b;
+
+  /* ── Status Surface (10% opacity backgrounds) ──────────── */
+  --color-surface-online:   #00d4aa18;
+  --color-surface-offline:  #ff6b6b18;
+  --color-surface-warning:  #ffd70018;
+  --color-surface-info:     #00a8e818;
+  --color-surface-purple:   #a855f718;
+  --color-surface-orange:   #f9731618;
+  --color-surface-amber:    #f59e0b18;
+
+  /* ── Brand Gradient ────────────────────────────────────── */
+  --gradient-brand:         linear-gradient(135deg, #00d4aa, #00a8e8);
+  --gradient-brand-text:    linear-gradient(90deg, #00d4aa, #00a8e8);
+  --gradient-brand-hover:   linear-gradient(135deg, #00e6b8, #1ab8f0);
+
+  /* ── Spacing Scale ─────────────────────────────────────── */
+  --space-0:    0;
+  --space-xs:   4px;
+  --space-sm:   8px;
+  --space-md:   16px;
+  --space-lg:   24px;
+  --space-xl:   32px;
+  --space-2xl:  48px;
+  --space-3xl:  64px;
+
+  /* ── Border Radii ──────────────────────────────────────── */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  /* ── Typography ────────────────────────────────────────── */
+  --font-sans:  'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:  'JetBrains Mono', 'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;
+
+  --text-xs:    10px;
+  --text-sm:    11px;
+  --text-base:  13px;
+  --text-md:    14px;
+  --text-lg:    17px;
+  --text-xl:    18px;
+  --text-2xl:   24px;
+  --text-3xl:   28px;
+  --text-4xl:   36px;
+
+  --weight-normal:  400;
+  --weight-medium:  500;
+  --weight-semibold: 600;
+  --weight-bold:    700;
+
+  --leading-tight:  1.3;
+  --leading-normal: 1.5;
+  --leading-loose:  1.6;
+
+  /* ── Shadows ───────────────────────────────────────────── */
+  --shadow-sm:     0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md:     0 2px 8px rgba(0,0,0,0.3);
+  --shadow-lg:     0 4px 16px rgba(0,0,0,0.4);
+  --shadow-xl:     0 8px 32px rgba(0,0,0,0.5);
+  --shadow-glow-online:  0 0 12px rgba(0,212,170,0.25);
+  --shadow-glow-offline: 0 0 12px rgba(255,107,107,0.2);
+  --shadow-glow-warning: 0 0 12px rgba(255,215,0,0.2);
+  --shadow-glow-brand:   0 0 20px rgba(0,212,170,0.15);
+  --shadow-inset:        inset 0 1px 2px rgba(0,0,0,0.3);
+
+  /* ── Transitions ───────────────────────────────────────── */
+  --duration-instant:  80ms;
+  --duration-fast:     150ms;
+  --duration-normal:   200ms;
+  --duration-slow:     300ms;
+  --duration-deliberate: 500ms;
+
+  --ease-default:      cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in:           cubic-bezier(0.4, 0, 1, 1);
+  --ease-out:          cubic-bezier(0, 0, 0.2, 1);
+  --ease-bounce:       cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --transition-fast:   var(--duration-fast) var(--ease-default);
+  --transition-normal: var(--duration-normal) var(--ease-default);
+  --transition-slow:   var(--duration-slow) var(--ease-default);
+
+  /* ── Sidebar ───────────────────────────────────────────── */
+  --sidebar-width:             240px;
+  --sidebar-collapsed-width:   64px;
+  --sidebar-bg:                var(--color-bg-elevated);
+  --sidebar-border:            var(--color-border-subtle);
+  --sidebar-item-height:       40px;
+  --sidebar-item-radius:       var(--radius-sm);
+  --sidebar-accent-width:      3px;
+  --sidebar-accent-color:      var(--color-status-online);
+  --sidebar-transition:        width var(--duration-slow) var(--ease-default),
+                               min-width var(--duration-slow) var(--ease-default);
+
+  /* ── Z-Index Scale ─────────────────────────────────────── */
+  --z-sidebar:      100;
+  --z-overlay:      200;
+  --z-toast:        300;
+  --z-modal:        400;
+  --z-tooltip:      500;
+
+  /* ── Layout ────────────────────────────────────────────── */
+  --content-padding: var(--space-xl);
+  --content-max-width: none;
+}
+
+/* ── Light Theme Override ──────────────────────────────────── */
+.theme-light {
+  --color-bg-void:       #f5f5f8;
+  --color-bg-primary:    #f8f9fc;
+  --color-bg-secondary:  #ffffff;
+  --color-bg-tertiary:   #f0f1f5;
+  --color-bg-elevated:   #f2f3f7;
+  --color-bg-recessed:   #ebedf2;
+  --color-bg-hover:      #e8e9ef;
+
+  --color-border-default:  #d8d9e2;
+  --color-border-subtle:   #e2e3eb;
+  --color-border-hover:    #c0c1cc;
+  --color-border-active:   #a8a9b6;
+  --color-border-danger:   #ff6b6b30;
+
+  --color-text-primary:    #1a1a2e;
+  --color-text-secondary:  #5a5a72;
+  --color-text-muted:      #8888a0;
+  --color-text-faint:      #a0a0b4;
+  --color-text-ghost:      #b8b8c8;
+  --color-text-inverse:    #ffffff;
+
+  --color-surface-online:   #00d4aa15;
+  --color-surface-offline:  #ff6b6b15;
+  --color-surface-warning:  #ffd70015;
+  --color-surface-info:     #00a8e815;
+  --color-surface-purple:   #a855f715;
+  --color-surface-orange:   #f9731615;
+
+  --shadow-sm:     0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:     0 2px 8px rgba(0,0,0,0.08);
+  --shadow-lg:     0 4px 16px rgba(0,0,0,0.1);
+  --shadow-xl:     0 8px 32px rgba(0,0,0,0.12);
+  --shadow-glow-online:  0 0 8px rgba(0,212,170,0.15);
+  --shadow-glow-offline: 0 0 8px rgba(255,107,107,0.12);
+  --shadow-glow-brand:   0 0 12px rgba(0,212,170,0.1);
+  --shadow-inset:        inset 0 1px 2px rgba(0,0,0,0.08);
+
+  --sidebar-bg:     var(--color-bg-elevated);
+  --sidebar-border: var(--color-border-subtle);
+}
